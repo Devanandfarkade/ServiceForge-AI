@@ -1,0 +1,30 @@
+# ServiceForge AI — AWS SAM CLI Configuration Template
+# Rename this file to samconfig.toml for active deployment.
+
+version = 0.1
+
+[default]
+[default.build]
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "serviceforge-prod"
+s3_prefix = "serviceforge-sam-artifacts"
+region = "ap-south-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+parameter_overrides = "Environment=\"prod\" TableName=\"ServiceForge\" BedrockModelId=\"anthropic.claude-3-5-sonnet-20241022-v2:0\""
+image_repositories = []
+
+[dev]
+[dev.deploy]
+[dev.deploy.parameters]
+stack_name = "serviceforge-dev"
+s3_prefix = "serviceforge-dev-artifacts"
+region = "ap-south-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+parameter_overrides = "Environment=\"dev\" TableName=\"ServiceForgeDev\" BedrockModelId=\"anthropic.claude-3-5-sonnet-20241022-v2:0\""
