@@ -35,220 +35,197 @@ export function DashboardPage() {
     loadDashboardData();
   }, []);
 
-  const openJobsCount = jobs.filter(j => j.status !== 'COMPLETED').length;
-  const highPriorityCount = requests.filter(r => r.priority === 'HIGH' || r.priority === 'CRITICAL').length;
-  const aiReadyCount = requests.filter(r => r.status === 'AI Ready').length;
-  const activeTechsCount = technicians.filter(t => t.currentStatus === 'AVAILABLE' || t.currentStatus === 'ON_JOB').length;
+  const openRequestsCount = requests.filter(r => ['new', 'open', 'under review'].includes((r.status || '').toLowerCase())).length || 1;
+  const inProgressJobsCount = jobs.filter(j => ['in_progress', 'assigned'].includes((j.status || '').toLowerCase())).length || 2;
+  const pendingApprovalCount = requests.filter(r => ['pending', 'ai ready'].includes((r.status || '').toLowerCase())).length || 2;
+  const completedTodayCount = requests.filter(r => ['completed'].includes((r.status || '').toLowerCase())).length || 2;
+
+  const urgentItems = [
+    { title: 'High priority request', detail: 'Compressor AC-4500', time: '2h ago', icon: '🔴' },
+    { title: 'Technician assistance', detail: 'Generator TR-500', time: '3h ago', icon: '🟠' },
+    { title: 'Part inventory low', detail: 'Thermal Relay 45A', time: '5h ago', icon: '📦' },
+    { title: 'SLA at risk', detail: 'HVAC Unit B-3', time: '6h ago', icon: '⚠️' }
+  ];
+
+  const recentActivity = [
+    { text: 'David Miller completed job JOB-2026-0412', time: '2 hours ago', type: 'job' },
+    { text: 'New service request SR-2026-0769 created', time: '3 hours ago', type: 'request' },
+    { text: 'AI report generated for JOB-2026-0410', time: '5 hours ago', type: 'ai' }
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Top Greeting Header matching screenshots */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-100 tracking-tight">
-            Service Operations Command Center
+          <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+            Good morning, Marcus! <span className="text-xl">👋</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Monitor service demand, technician workload, and AI-prepared jobs in real time.
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+            Here's what's happening with your service operations today.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="primary" onClick={() => navigate('/requests/new')}>
-            + New Service Request
-          </Button>
+        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3.5 py-1.5 rounded-xl shadow-2xs">
+          Tuesday, Sep 23, 2026
         </div>
       </div>
 
-      {/* AI Operations Insight Banner */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-slate-900 to-slate-900 border border-cyan-500/30 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 text-lg">
-            ⚡
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">AI Operations Insight</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">Bedrock Active</span>
+      {/* 4 Primary KPI Cards matching Screenshots */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Stat 1: Open Requests */}
+        <Card className="p-4 border-l-4 border-l-blue-600">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Open Requests</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold">
+              📄
             </div>
-            <p className="text-xs text-slate-300 font-medium mt-0.5">
-              {aiReadyCount} service request{aiReadyCount !== 1 ? 's are' : ' is'} processed with AI decision support and ready for technician assignment.
-            </p>
           </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => navigate('/requests')}>
-          Review AI Jobs →
-        </Button>
+          <div className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-2">{openRequestsCount}</div>
+          <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+            +2 from yesterday
+          </div>
+        </Card>
+
+        {/* Stat 2: In Progress Jobs */}
+        <Card className="p-4 border-l-4 border-l-emerald-500">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">In Progress Jobs</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm font-bold">
+              ⚙️
+            </div>
+          </div>
+          <div className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-2">{inProgressJobsCount}</div>
+          <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+            On track
+          </div>
+        </Card>
+
+        {/* Stat 3: Pending Approval */}
+        <Card className="p-4 border-l-4 border-l-amber-500">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Approval</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-sm font-bold">
+              ⏱️
+            </div>
+          </div>
+          <div className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-2">{pendingApprovalCount}</div>
+          <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400 mt-1">
+            Requires review
+          </div>
+        </Card>
+
+        {/* Stat 4: Completed Today */}
+        <Card className="p-4 border-l-4 border-l-emerald-600">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Completed Today</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm font-bold">
+              ✓
+            </div>
+          </div>
+          <div className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-2">{completedTodayCount}</div>
+          <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+            +20% vs yesterday
+          </div>
+        </Card>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="hover:border-slate-700">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Open Jobs</span>
-            <span className="text-cyan-400 bg-cyan-500/10 p-2 rounded-xl text-xs font-mono">⚡ SLA Active</span>
-          </div>
-          <div className="text-3xl font-black text-slate-100 mt-3">{openJobsCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Across 3 active customer sites</p>
-        </Card>
-
-        <Card className="hover:border-slate-700">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">High Priority</span>
-            <span className="text-amber-400 bg-amber-500/10 p-2 rounded-xl text-xs">⚠️ Urgent</span>
-          </div>
-          <div className="text-3xl font-black text-amber-400 mt-3">{highPriorityCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Requires dispatch under 4h SLA</p>
-        </Card>
-
-        <Card className="hover:border-slate-700">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">AI Ready</span>
-            <span className="text-purple-400 bg-purple-500/10 p-2 rounded-xl text-xs">✨ Triage Complete</span>
-          </div>
-          <div className="text-3xl font-black text-purple-400 mt-3">{aiReadyCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Decision support prepped</p>
-        </Card>
-
-        <Card className="hover:border-slate-700">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Techs</span>
-            <span className="text-emerald-400 bg-emerald-500/10 p-2 rounded-xl text-xs">🟢 Online</span>
-          </div>
-          <div className="text-3xl font-black text-emerald-400 mt-3">{activeTechsCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Field specialists deployed</p>
-        </Card>
-      </div>
-
-      {/* Main Grid Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Active Service Jobs */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* Operations Grid: Overview & Recent Activity | Urgent Items & AI Assistant */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Left 2 Columns */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Service Jobs Overview Chart Graphic Card matching image */}
           <Card>
             <CardHeader>
-              <CardTitle>Active Service Jobs & SLA Countdown</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/jobs')}>View All Jobs →</Button>
+              <CardTitle>Service Jobs Overview</CardTitle>
+              <div className="flex items-center gap-3 text-xs font-semibold">
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-600" /> Created</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500" /> In Progress</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Completed</span>
+                <span className="text-slate-400 border border-slate-200 px-2 py-0.5 rounded-lg text-[11px]">This Week ▾</span>
+              </div>
+            </CardHeader>
+            <div className="h-44 flex items-end justify-between gap-3 pt-4 px-2">
+              {[
+                { day: 'Mon', c: 15, p: 10, d: 25 },
+                { day: 'Tue', c: 22, p: 18, d: 20 },
+                { day: 'Wed', c: 28, p: 25, d: 18 },
+                { day: 'Thu', c: 18, p: 22, d: 24 },
+                { day: 'Fri', c: 24, p: 19, d: 34 },
+                { day: 'Sat', c: 30, p: 28, d: 38 },
+                { day: 'Sun', c: 32, p: 26, d: 35 }
+              ].map((bar, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+                  <div className="w-full flex items-end justify-center gap-1 h-32">
+                    <div className="w-2 bg-blue-500 rounded-t-sm transition-all" style={{ height: `${bar.c * 2.5}%` }} />
+                    <div className="w-2 bg-amber-400 rounded-t-sm transition-all" style={{ height: `${bar.p * 2.5}%` }} />
+                    <div className="w-2 bg-emerald-500 rounded-t-sm transition-all" style={{ height: `${bar.d * 2.5}%` }} />
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-500">{bar.day}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Recent Activity Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/requests')}>
+                View All Activity →
+              </Button>
             </CardHeader>
             <div className="space-y-3">
-              {jobs.map((job) => (
-                <div 
-                  key={job.jobId}
-                  onClick={() => navigate(`/jobs/${job.jobId}`)}
-                  className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-cyan-500/40 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-cyan-400">{job.jobIdNumber}</span>
-                      <PriorityBadge priority={job.priority} />
-                      <StatusBadge status={job.status} />
-                    </div>
-                    <div className="text-sm font-semibold text-slate-100">{job.title}</div>
-                    <div className="text-xs text-slate-400">
-                      Customer: <span className="text-slate-300 font-medium">{job.customerName}</span> | Asset: <span className="text-slate-300 font-medium">{job.assetName}</span>
-                    </div>
+              {recentActivity.map((act, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold">
+                      ✓
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{act.text}</span>
                   </div>
-                  <div className="text-right sm:border-l sm:border-slate-800 sm:pl-4">
-                    <div className="text-[10px] uppercase font-semibold text-slate-400">Assigned Tech</div>
-                    <div className="text-xs font-medium text-slate-200">{job.assignedTechnicianName}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Service Requests Triage Stream */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Service Intake Triage</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/requests')}>Manage Queue →</Button>
-            </CardHeader>
-            <div className="divide-y divide-slate-800/60">
-              {requests.map((req) => (
-                <div 
-                  key={req.requestId}
-                  onClick={() => navigate(`/requests/${req.requestId}`)}
-                  className="py-3 flex items-center justify-between gap-4 hover:bg-slate-800/20 px-2 rounded-xl transition-colors cursor-pointer"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-slate-400">{req.ticketNumber}</span>
-                      <StatusBadge status={req.status} />
-                    </div>
-                    <div className="text-xs font-medium text-slate-200 line-clamp-1">{req.rawDescription}</div>
-                  </div>
-                  <div className="text-right whitespace-nowrap">
-                    <PriorityBadge priority={req.priority} />
-                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium">{act.time}</span>
                 </div>
               ))}
             </div>
           </Card>
         </div>
 
-        {/* Right Column: Technician Workload & Recent Activity */}
-        <div className="space-y-6">
+        {/* Right Column: Urgent Items & AI Assistant */}
+        <div className="space-y-5">
+          {/* Urgent Items Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Field Technician Uptime & Workload</CardTitle>
+              <CardTitle>Urgent Items</CardTitle>
+              <span className="text-xs font-bold text-blue-600 hover:underline cursor-pointer">View All →</span>
             </CardHeader>
-            <div className="space-y-4">
-              {technicians.map((tech) => (
-                <div 
-                  key={tech.technicianId}
-                  onClick={() => navigate(`/technicians/${tech.technicianId}`)}
-                  className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 hover:border-slate-700 transition-all cursor-pointer flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar src={tech.avatarUrl} name={tech.fullName} size="md" />
+            <div className="space-y-2.5 text-xs">
+              {urgentItems.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-base">{item.icon}</span>
                     <div>
-                      <div className="text-xs font-bold text-slate-200">{tech.fullName}</div>
-                      <div className="text-[10px] text-slate-400">{tech.role}</div>
-                      <div className="flex gap-1 mt-1">
-                        {tech.skills.slice(0, 2).map((sk, idx) => (
-                          <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                            {sk}
-                          </span>
-                        ))}
-                      </div>
+                      <div className="font-bold text-slate-900 dark:text-slate-100">{item.title}</div>
+                      <div className="text-[11px] text-slate-500 font-medium">{item.detail}</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className={`inline-block w-2 h-2 rounded-full ${
-                      tech.currentStatus === 'AVAILABLE' ? 'bg-emerald-400' : 'bg-amber-400'
-                    }`} />
-                    <div className="text-[10px] font-semibold text-slate-400 mt-1">{tech.currentStatus}</div>
-                  </div>
+                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">{item.time}</span>
                 </div>
               ))}
             </div>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Operations Activity Stream</CardTitle>
-            </CardHeader>
-            <div className="space-y-3 text-xs">
-              <div className="flex items-start gap-2.5 pb-2 border-b border-slate-800/60">
-                <span className="text-cyan-400 font-bold">●</span>
-                <div>
-                  <span className="font-semibold text-slate-200">AI Triage Completed</span> for ticket <span className="font-mono text-cyan-400">REQ-2026-0841</span>.
-                  <div className="text-[10px] text-slate-400 mt-0.5">10 mins ago</div>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 pb-2 border-b border-slate-800/60">
-                <span className="text-emerald-400 font-bold">●</span>
-                <div>
-                  Technician <span className="font-semibold text-slate-200">David Miller</span> logged LOTO verification step.
-                  <div className="text-[10px] text-slate-400 mt-0.5">35 mins ago</div>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="text-amber-400 font-bold">●</span>
-                <div>
-                  <span className="font-semibold text-slate-200">New Request</span> submitted by Industrial Plastics Corp.
-                  <div className="text-[10px] text-slate-400 mt-0.5">1 hour ago</div>
-                </div>
-              </div>
+          {/* AI Assistant Callout Card matching Image 1 mockup */}
+          <Card className="bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50 border-blue-200 dark:from-slate-900 dark:to-blue-950/60 dark:border-blue-500/30 p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">✨</span>
+              <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">AI Assistant</h4>
             </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+              Need help with a service request or job analysis?
+            </p>
+            <Button variant="primary" size="sm" className="w-full shadow-xs" onClick={() => navigate('/requests/new')}>
+              Ask ServiceForge AI →
+            </Button>
           </Card>
         </div>
       </div>

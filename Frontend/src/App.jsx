@@ -1,5 +1,7 @@
 import React from 'react';
 import { RouterProvider, useRouter, matchRoute } from './lib/router';
+import { ThemeProvider } from './lib/theme';
+import { NotificationProvider } from './lib/notifications';
 import { AppLayout } from './layouts/AppLayout';
 
 import { DashboardPage } from './pages/DashboardPage';
@@ -14,6 +16,7 @@ import { CustomersPage } from './pages/CustomersPage';
 import { AssetsPage } from './pages/AssetsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 function RouterSwitch() {
   const { path } = useRouter();
@@ -21,6 +24,10 @@ function RouterSwitch() {
   // Route matching
   if (path === '/' || path === '/dashboard') {
     return <DashboardPage />;
+  }
+
+  if (path === '/profile') {
+    return <ProfilePage />;
   }
 
   if (path === '/requests/new') {
@@ -76,10 +83,14 @@ function RouterSwitch() {
 
 export default function App() {
   return (
-    <RouterProvider>
-      <AppLayout>
-        <RouterSwitch />
-      </AppLayout>
-    </RouterProvider>
+    <ThemeProvider>
+      <NotificationProvider>
+        <RouterProvider>
+          <AppLayout>
+            <RouterSwitch />
+          </AppLayout>
+        </RouterProvider>
+      </NotificationProvider>
+    </ThemeProvider>
   );
 }

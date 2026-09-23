@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
+import { Select } from '../components/ui/Input';
 import { Table, TableRow, TableCell } from '../components/ui/Table';
 import { StatusBadge, PriorityBadge } from '../components/ui/Badge';
 import { serviceJobService } from '../services/serviceJobService';
@@ -34,20 +34,22 @@ export function ServiceJobsPage() {
   }, [statusFilter, priorityFilter]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header with High-Contrast Light & Dark Heading */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-100 tracking-tight">Service Jobs Dispatch Board</h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Manage active work orders, SLA deadlines, and technician field dispatches.
+          <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+            Service Jobs Dispatch
+          </h1>
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+            Manage active work orders, SLA risk deadlines, and technician field dispatches.
           </p>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <Card className="p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <Card className="p-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -63,7 +65,7 @@ export function ServiceJobsPage() {
             onChange={(e) => setPriorityFilter(e.target.value)}
             options={[
               { label: 'All Priorities', value: '' },
-              { label: 'Critical', value: 'CRITICAL' },
+              { label: 'Critical Outage', value: 'CRITICAL' },
               { label: 'High Priority', value: 'HIGH' },
               { label: 'Medium Priority', value: 'MEDIUM' }
             ]}
@@ -73,21 +75,21 @@ export function ServiceJobsPage() {
 
       {/* Jobs Table */}
       {loading ? (
-        <LoadingSpinner label="Loading service jobs..." />
+        <LoadingSpinner label="Loading service jobs dispatch board..." />
       ) : jobs.length === 0 ? (
-        <EmptyState title="No Service Jobs Found" description="There are no jobs matching your filter criteria." />
+        <EmptyState title="No Service Jobs Found" description="There are no active jobs matching your filters." />
       ) : (
-        <Table headers={['Job ID', 'Work Order Title', 'Customer', 'Assigned Tech', 'Priority', 'Status', 'SLA Target', 'Actions']}>
+        <Table headers={['Job ID', 'Work Order Title', 'Customer', 'Assigned Tech', 'Priority', 'Status', 'SLA Target', 'Action']}>
           {jobs.map((job) => (
             <TableRow key={job.jobId} onClick={() => navigate(`/jobs/${job.jobId}`)}>
-              <TableCell className="font-mono font-bold text-cyan-400">{job.jobIdNumber}</TableCell>
-              <TableCell className="font-semibold text-slate-200">{job.title}</TableCell>
-              <TableCell className="text-slate-300">{job.customerName}</TableCell>
-              <TableCell className="text-slate-200 font-medium">{job.assignedTechnicianName}</TableCell>
+              <TableCell className="font-mono font-bold text-blue-600 dark:text-blue-400">{job.jobIdNumber}</TableCell>
+              <TableCell className="font-bold text-slate-900 dark:text-slate-100">{job.title}</TableCell>
+              <TableCell className="text-slate-700 dark:text-slate-300 font-medium">{job.customerName}</TableCell>
+              <TableCell className="text-slate-900 dark:text-slate-200 font-bold">{job.assignedTechnicianName}</TableCell>
               <TableCell><PriorityBadge priority={job.priority} /></TableCell>
               <TableCell><StatusBadge status={job.status} /></TableCell>
-              <TableCell className="text-xs font-mono text-slate-400">
-                {new Date(job.targetSlaDeadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <TableCell className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400">
+                ⏰ {new Date(job.targetSlaDeadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </TableCell>
               <TableCell>
                 <Button 
@@ -98,7 +100,7 @@ export function ServiceJobsPage() {
                     navigate(`/jobs/${job.jobId}`);
                   }}
                 >
-                  Manage Job
+                  Manage →
                 </Button>
               </TableCell>
             </TableRow>

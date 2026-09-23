@@ -44,71 +44,98 @@ export function TechnicianDetailPage({ id }) {
     setNoteText('');
   };
 
-  if (loading) return <LoadingSpinner label="Loading technician workspace..." />;
-  if (!tech) return <div className="text-slate-400 p-8 text-center">Technician Not Found.</div>;
+  const handleCompleteJob = async () => {
+    if (!activeJob) return;
+    await serviceJobService.completeJob(activeJob.jobId);
+    setActiveJob(prev => ({ ...prev, status: 'COMPLETED' }));
+  };
+
+  if (loading) return <LoadingSpinner label="Loading mobile field workspace..." />;
+  if (!tech) return <div className="text-slate-500 p-8 text-center font-bold">Technician Not Found.</div>;
 
   return (
-    <div className="space-y-6 max-w-xl mx-auto">
-      {/* Mobile Workspace Banner Header */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-900/90 border border-slate-800 flex items-center justify-between">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-wider text-cyan-400">Mobile Technician Workspace</div>
-          <h2 className="text-lg font-black text-slate-100">{tech.fullName}</h2>
-          <p className="text-xs text-slate-400 font-mono">{tech.role} • {tech.employeeId}</p>
+    <div className="space-y-4 max-w-md mx-auto pb-24">
+      {/* Mobile Field Header matching Image 1 & 2 */}
+      <div className="p-4 rounded-2xl bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-bold text-sm">
+            {tech.fullName.split(' ').map(n => n[0]).join('')}
+          </div>
+          <div>
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+              MOBILE FIELD WORKSPACE
+            </div>
+            <h2 className="text-base font-black text-slate-900 dark:text-slate-100">
+              {tech.fullName}
+            </h2>
+            <p className="text-[11px] text-slate-500 font-semibold">
+              {tech.role}
+            </p>
+          </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => navigate('/technicians')}>← Back</Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/technicians')}>
+          ← Back
+        </Button>
       </div>
 
       {activeJob ? (
         <div className="space-y-4">
           {/* Active Job Header Card */}
-          <Card className="space-y-3">
+          <Card className="space-y-3 p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold text-cyan-400">{activeJob.jobIdNumber}</span>
+              <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
+                {activeJob.jobIdNumber}
+              </span>
               <div className="flex gap-1.5">
                 <PriorityBadge priority={activeJob.priority} />
                 <StatusBadge status={activeJob.status} />
               </div>
             </div>
 
-            <h3 className="text-base font-bold text-slate-100">{activeJob.title}</h3>
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 leading-snug">
+              {activeJob.title}
+            </h3>
             
-            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5 text-xs text-slate-300">
-              <div>🏢 <span className="font-semibold text-slate-100">{activeJob.customerName}</span></div>
-              <div>📍 <span className="text-slate-400">Plant 2, Compressor Room B, Bay 4</span></div>
-              <div>⚙️ <span className="text-slate-300">{activeJob.assetName}</span></div>
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1 text-xs text-slate-700 dark:text-slate-300 font-medium">
+              <div>🏢 <span className="font-bold text-slate-900 dark:text-slate-100">{activeJob.customerName}</span></div>
+              <div>📍 <span className="text-slate-500">Plant 2, Compressor Room B, Bay 4</span></div>
+              <div>⚙️ <span>{activeJob.assetName}</span></div>
             </div>
           </Card>
 
-          {/* LOTO Safety Acknowledgement Banner */}
-          <Card className={`transition-all ${safetyAcknowledged ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-amber-500/40 bg-amber-500/10'}`}>
+          {/* LOTO Safety Requirement Callout Box */}
+          <Card className={`p-4 transition-all ${
+            safetyAcknowledged 
+              ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-500/10' 
+              : 'border-amber-300 bg-amber-50 dark:bg-amber-500/10'
+          }`}>
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
-                <span>⚠</span> LOTO & High-Voltage Safety Guidelines
+              <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300">
+                <span>⚠</span> LOCKOUT/TAGOUT (LOTO) SAFETY REQUIREMENT
               </div>
-              <div className="text-xs text-amber-200/90 space-y-1 font-medium">
-                {activeJob.safetyGuidelines.map((sg, idx) => (
-                  <div key={idx}>• {sg}</div>
-                ))}
-              </div>
-              <label className="pt-2 flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer">
+              <p className="text-xs text-amber-800 dark:text-amber-200 font-medium leading-relaxed">
+                Confirm lockout/tagout procedure executed before beginning work on site. Verify zero electrical voltage across breaker Panel B-4.
+              </p>
+              <label className="pt-2 flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100 cursor-pointer select-none">
                 <input 
                   type="checkbox"
                   checked={safetyAcknowledged}
                   onChange={(e) => setSafetyAcknowledged(e.target.checked)}
-                  className="accent-emerald-500 rounded"
+                  className="w-4 h-4 accent-emerald-600 rounded"
                 />
-                I acknowledge Lockout/Tagout (LOTO) safety protocol before site entry
+                Confirm LOTO procedure executed before work
               </label>
             </div>
           </Card>
 
-          {/* Step-by-Step Interactive Inspection Checklist */}
-          <Card className="space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Interactive Inspection Checklist</h4>
-              <span className="text-xs font-mono text-cyan-400">
-                {activeJob.confirmedChecklist.filter(c => c.completed).length} / {activeJob.confirmedChecklist.length} Done
+          {/* Interactive Checklist */}
+          <Card className="space-y-3 p-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                Interactive Checklist
+              </h4>
+              <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
+                {activeJob.confirmedChecklist.filter(c => c.completed).length}/{activeJob.confirmedChecklist.length} Done
               </span>
             </div>
 
@@ -117,20 +144,20 @@ export function TechnicianDetailPage({ id }) {
                 <div
                   key={step.stepNumber}
                   onClick={() => handleToggleStep(step.stepNumber)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
                     step.completed
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                      : 'bg-slate-950/80 border-slate-800 text-slate-200 hover:border-slate-700'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-200'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-slate-300 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100'
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={step.completed}
                     onChange={() => {}}
-                    className="mt-0.5 accent-cyan-500 rounded cursor-pointer"
+                    className="mt-0.5 w-4 h-4 accent-blue-600 rounded"
                   />
-                  <div className="flex-1 text-xs">
-                    <span className="font-bold font-mono text-cyan-400 mr-1.5">Step {step.stepNumber}:</span>
+                  <div className="flex-1 text-xs leading-snug font-bold">
+                    <span className="text-blue-600 dark:text-blue-400 mr-1">Step {step.stepNumber}:</span>
                     {step.instruction}
                   </div>
                 </div>
@@ -138,30 +165,46 @@ export function TechnicianDetailPage({ id }) {
             </div>
           </Card>
 
-          {/* Log Field Note Form */}
-          <Card className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Log Field Progress & Photos</h4>
-            <form onSubmit={handleAddNote} className="space-y-2">
+          {/* Field Progress Logger */}
+          <Card className="space-y-3 p-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              Field Progress Logger
+            </h4>
+            <form onSubmit={handleAddNote} className="space-y-2.5">
               <input
                 type="text"
-                placeholder="Log thermal readings, voltage test notes, or parts installed..."
+                placeholder="Log field observation or parts installed..."
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
               />
               <div className="flex gap-2">
-                <Button type="button" variant="secondary" size="sm" className="flex-1">📷 Add Photo</Button>
-                <Button type="submit" variant="primary" size="sm" className="flex-1">+ Save Note</Button>
+                <Button type="button" variant="secondary" size="sm" className="flex-1 min-h-[38px]">
+                  📷 Add Photo
+                </Button>
+                <Button type="submit" variant="primary" size="sm" className="flex-1 min-h-[38px]">
+                  + Save Note
+                </Button>
               </div>
             </form>
           </Card>
         </div>
       ) : (
-        <Card className="p-8 text-center text-slate-400 space-y-2">
-          <div className="text-2xl">🟢</div>
-          <div className="text-sm font-semibold text-slate-200">No Active Dispatched Job</div>
-          <p className="text-xs">Technician is currently available for dispatch assignment.</p>
+        <Card className="p-8 text-center text-slate-500 space-y-2">
+          <div className="text-xl">🟢</div>
+          <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+            Available for Dispatch
+          </div>
         </Card>
+      )}
+
+      {/* Sticky Bottom Action Bar matching Image 1 & 2 */}
+      {activeJob && activeJob.status !== 'COMPLETED' && (
+        <div className="fixed bottom-0 left-0 right-0 p-3 bg-white/95 border-t border-slate-200 backdrop-blur-md z-40 flex items-center justify-between gap-3 max-w-md mx-auto shadow-2xl dark:bg-slate-900/95 dark:border-slate-800">
+          <Button variant="success" size="md" className="w-full min-h-[44px] text-xs font-bold" onClick={handleCompleteJob}>
+            Mark Job Completed
+          </Button>
+        </div>
       )}
     </div>
   );

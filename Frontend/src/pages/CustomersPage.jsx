@@ -22,11 +22,16 @@ export function CustomersPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header with High-Contrast Light & Dark Heading */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-100 tracking-tight">Customer Accounts</h1>
-          <p className="text-xs text-slate-400 mt-1">Enterprise B2B client accounts, SLA tiers, and equipment assets.</p>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+            Customer Accounts
+          </h1>
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+            Enterprise B2B client accounts, SLA tiers, and equipment assets.
+          </p>
         </div>
       </div>
 
@@ -36,15 +41,15 @@ export function CustomersPage() {
         <Table headers={['Company Name', 'Industry', 'Primary Contact', 'SLA Tier', 'Assets', 'Active Jobs', 'Status']}>
           {customers.map((c) => (
             <TableRow key={c.customerId}>
-              <TableCell className="font-bold text-slate-100">{c.companyName}</TableCell>
-              <TableCell className="text-slate-400">{c.industry}</TableCell>
-              <TableCell className="text-slate-300">
+              <TableCell className="font-bold text-slate-900 dark:text-slate-100">{c.companyName}</TableCell>
+              <TableCell className="text-slate-600 dark:text-slate-400 font-medium">{c.industry}</TableCell>
+              <TableCell className="text-slate-700 dark:text-slate-300 font-medium">
                 <div>{c.contactName}</div>
                 <div className="text-[11px] text-slate-500">{c.contactEmail}</div>
               </TableCell>
-              <TableCell><Badge variant="cyan">{c.slaTier}</Badge></TableCell>
-              <TableCell className="font-mono text-slate-300">{c.totalAssetsCount} units</TableCell>
-              <TableCell className="font-mono font-bold text-cyan-400">{c.activeJobsCount} jobs</TableCell>
+              <TableCell><Badge variant="blue">{c.slaTier}</Badge></TableCell>
+              <TableCell className="font-mono text-slate-700 dark:text-slate-300 font-semibold">{c.totalAssetsCount} units</TableCell>
+              <TableCell className="font-mono font-bold text-blue-600 dark:text-blue-400">{c.activeJobsCount} jobs</TableCell>
               <TableCell><Badge variant="emerald">{c.status}</Badge></TableCell>
             </TableRow>
           ))}
