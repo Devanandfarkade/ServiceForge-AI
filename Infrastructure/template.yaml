@@ -388,6 +388,46 @@ Resources:
                 Resource:
                   - !Sub '${ServiceForgeAttachmentsBucket.Arn}/*'
 
+  AttachmentLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ServiceForgeAttachmentRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt ServiceForgeTable.Arn
+                  - !Sub '${ServiceForgeTable.Arn}/index/*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub '${ServiceForgeAttachmentsBucket.Arn}/*'
+
   # ============================================================================
   # 6. AWS LAMBDA MICROSERVICES FOUNDATION
   # ============================================================================
@@ -416,6 +456,12 @@ Resources:
             RestApiId: !Ref ServiceForgeApi
             Path: /service-requests/{id}
             Method: get
+        PatchRequest:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-requests/{id}
+            Method: patch
         AnalyzeRequest:
           Type: Api
           Properties:
@@ -460,6 +506,12 @@ Resources:
             RestApiId: !Ref ServiceForgeApi
             Path: /service-jobs/{id}/updates
             Method: post
+        CompleteJob:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs/{id}/complete
+            Method: post
 
   TechnicianFunction:
     Type: AWS::Serverless::Function
@@ -501,6 +553,32 @@ Resources:
             Path: /service-jobs/{id}/report
             Method: get
 
+  AttachmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../Backend/functions/attachment/
+      Handler: handler.lambda_handler
+      Role: !GetAtt AttachmentLambdaRole.Arn
+      Events:
+        PresignAttachment:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /attachments/presign
+            Method: post
+        ConfirmAttachment:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /attachments/{id}/confirm
+            Method: post
+        DeleteAttachment:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /attachments/{id}
+            Method: delete
+
   # ============================================================================
   # 7. AMAZON CLOUDWATCH LOG GROUPS & ALARMS
   # ============================================================================
@@ -526,6 +604,12 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/${ReportFunction}'
+      RetentionInDays: 30
+
+  AttachmentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AttachmentFunction}'
       RetentionInDays: 30
 
   Api5xxErrorAlarm:

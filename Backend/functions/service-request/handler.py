@@ -1,69 +1,180 @@
 """
 ServiceForge AI — Service Request Lambda Handler
-Handles Service Request creation, retrieval, and Amazon Bedrock decision support trigger points.
+Handles Service Request creation, retrieval, status updates, and AI integration boundary.
 """
 
 import json
-import logging
-import sys
 import os
+import sys
 
-# Include shared package path for standalone Lambda runtime compatibility
+# Add shared package to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-from shared.response import build_response, build_error_response
+from shared.auth import extract_user_context, require_role, verify_tenant_access
 from shared.config import Config
-
-logger = logging.getLogger()
-logger.setLevel(Config.LOG_LEVEL)
+from shared.dynamodb import db_client
+from shared.errors import NotFoundError, ServiceForgeError
+from shared.logging_utils import logger
+from shared.models import build_service_request_item, clean_dynamodb_keys
+from shared.responses import build_error_response, build_success_response, extract_request_id, handle_exception
+from shared.validation import validate_service_request_input
 
 def lambda_handler(event: dict, context) -> dict:
-    """
-    AWS Lambda entry point for Service Request API endpoints.
+    request_id = extract_request_id(event)
     
-    Supported HTTP Methods (Future):
-    - POST /api/requests: Create request & trigger Bedrock AI extraction
-    - GET /api/requests: List active service requests
-    - GET /api/requests/{id}: Retrieve specific request & AI analysis
-    """
     try:
-        http_method = event.get("httpMethod", "GET")
-        path = event.get("path", "/api/requests")
+        user_ctx = extract_user_context(event)
+        org_id = user_ctx["organizationId"]
+        user_id = user_ctx["userId"]
+        role = user_ctx["role"]
         
-        logger.info(f"Received request: {http_method} {path}")
-        
-        # Handle CORS preflight OPTIONS request
-        if http_method == "OPTIONS":
-            return build_response(200, {"message": "CORS preflight successful"})
-            
-        if http_method == "GET":
-            # TODO: Query DynamoDB single-table for Service Requests (PK: REQ#...)
-            return build_response(200, {
-                "status": "success",
-                "message": "Service Request API handler initialized.",
-                "region": Config.AWS_REGION,
-                "data": {
-                    "requests": [],
-                    "note": "TODO: Implement DynamoDB query and Amazon Bedrock integration."
-                }
-            })
-            
-        elif http_method == "POST":
-            # TODO: Parse raw customer issue text from event body
-            # TODO: Invoke Amazon Bedrock (Claude 3.5 Sonnet) for structured entity extraction
-            # TODO: Save raw request & AI analysis to DynamoDB
-            return build_response(201, {
-                "status": "success",
-                "message": "Service Request intake endpoint ready.",
-                "note": "TODO: Connect Bedrock model for AI decision support extraction."
-            })
-            
-        else:
-            return build_error_response(405, f"Method {http_method} not allowed.")
-            
-    except Exception as e:
-        return build_error_response(
-            status_code=500,
-            public_message="An internal server error occurred while processing the service request.",
-            error_details=e
+        http_method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "GET")
+        path = event.get("path") or event.get("rawPath", "/service-requests")
+        path_parameters = event.get("pathParameters") or {}
+        req_id_param = path_parameters.get("id")
+
+        logger.info(
+            f"ServiceRequest API Invoked: {http_method} {path}",
+            request_id=request_id,
+            org_id=org_id,
+            user_id=user_id,
+            role=role,
+            operation=f"ServiceRequest.{http_method}"
         )
+
+        if http_method == "OPTIONS":
+            return build_success_response({"message": "CORS preflight successful"}, 200, request_id)
+
+        # ----------------------------------------------------------------------
+        # 1. POST /service-requests — Create Service Request
+        # ----------------------------------------------------------------------
+        if http_method == "POST" and not path.endswith("/analyze"):
+            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER", "CUSTOMER"])
+            
+            body_str = event.get("body", "{}") or "{}"
+            payload = json.loads(body_str) if isinstance(body_str, str) else body_str
+
+            validated = validate_service_request_input(payload)
+
+            request_item = build_service_request_item(
+                org_id=org_id,
+                user_id=user_id,
+                description=validated["description"],
+                description_source=validated["descriptionSource"],
+                priority=validated["priority"],
+                customer_id=validated.get("customerId"),
+                asset_id=validated.get("assetId"),
+                attachments=validated.get("attachments")
+            )
+
+            db_client.put_item(request_item)
+            cleaned_resp = clean_dynamodb_keys(request_item)
+
+            logger.info(
+                f"Created Service Request {request_item['ticketNumber']} for org '{org_id}'",
+                request_id=request_id,
+                org_id=org_id,
+                user_id=user_id
+            )
+
+            return build_success_response(cleaned_resp, 201, request_id)
+
+        # ----------------------------------------------------------------------
+        # 2. GET /service-requests — List Service Requests for Tenant
+        # ----------------------------------------------------------------------
+        elif http_method == "GET" and not req_id_param:
+            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER", "CUSTOMER"])
+            
+            query_params = event.get("queryStringParameters") or {}
+            status_filter = query_params.get("status")
+
+            if status_filter:
+                items = db_client.query(
+                    gsi_name="GSI1",
+                    gsi_pk=f"ORG#{org_id}#STATUS#{status_filter.upper()}"
+                )
+            else:
+                items = db_client.query(
+                    pk=f"ORG#{org_id}",
+                    sk_prefix="REQ#"
+                )
+
+            cleaned_items = [clean_dynamodb_keys(item) for item in items]
+            return build_success_response(cleaned_items, 200, request_id)
+
+        # ----------------------------------------------------------------------
+        # 3. GET /service-requests/{id} — Retrieve Specific Request
+        # ----------------------------------------------------------------------
+        elif http_method == "GET" and req_id_param:
+            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER", "CUSTOMER"])
+
+            pk = f"ORG#{org_id}"
+            sk = f"REQ#{req_id_param}"
+            item = db_client.get_item(pk, sk)
+
+            if not item:
+                raise NotFoundError(f"Service request '{req_id_param}' not found in user organization.")
+
+            verify_tenant_access(user_ctx, item["organizationId"])
+            return build_success_response(clean_dynamodb_keys(item), 200, request_id)
+
+        # ----------------------------------------------------------------------
+        # 4. POST /service-requests/{id}/analyze — AI Integration Placeholder
+        # ----------------------------------------------------------------------
+        elif http_method == "POST" and path.endswith("/analyze"):
+            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER"])
+
+            target_id = req_id_param or path.split("/")[-2]
+            pk = f"ORG#{org_id}"
+            sk = f"REQ#{target_id}"
+            item = db_client.get_item(pk, sk)
+
+            if not item:
+                raise NotFoundError(f"Service request '{target_id}' not found in user organization.")
+
+            verify_tenant_access(user_ctx, item["organizationId"])
+
+            # PHASE 1 BOUNDARY: Do NOT invoke Bedrock. Return integration placeholder.
+            return build_success_response({
+                "status": "ai_placeholder",
+                "message": "AI analysis (Amazon Bedrock) is not connected in Phase 1.",
+                "requestId": target_id,
+                "note": "Frontend may continue using client-side mock AI output until Phase 2 integration."
+            }, 200, request_id)
+
+        # ----------------------------------------------------------------------
+        # 5. PATCH /service-requests/{id} — Status Update / Approval
+        # ----------------------------------------------------------------------
+        elif http_method in ["PATCH", "PUT"] and req_id_param:
+            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER"])
+
+            body_str = event.get("body", "{}") or "{}"
+            payload = json.loads(body_str) if isinstance(body_str, str) else body_str
+
+            pk = f"ORG#{org_id}"
+            sk = f"REQ#{req_id_param}"
+            existing = db_client.get_item(pk, sk)
+
+            if not existing:
+                raise NotFoundError(f"Service request '{req_id_param}' not found in user organization.")
+
+            verify_tenant_access(user_ctx, existing["organizationId"])
+
+            new_status = payload.get("status", existing.get("status"))
+            new_priority = payload.get("priority", existing.get("priority"))
+
+            updates = {
+                "status": new_status,
+                "priority": new_priority,
+                "GSI1PK": f"ORG#{org_id}#STATUS#{new_status}",
+                "GSI2PK": f"ORG#{org_id}#PRIORITY#{new_priority}"
+            }
+
+            updated_item = db_client.update_item(pk, sk, updates)
+            return build_success_response(clean_dynamodb_keys(updated_item), 200, request_id)
+
+        else:
+            return build_error_response(405, f"Method {http_method} not allowed on {path}", "METHOD_NOT_ALLOWED", request_id=request_id)
+
+    except Exception as e:
+        return handle_exception(e, request_id)

@@ -34,6 +34,7 @@ export const serviceRequestService = {
   createRequest: async (requestData) => {
     const newId = `r${Date.now()}`;
     const newTicket = `REQ-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const finalDesc = requestData.description || requestData.rawDescription || "";
     const newRequest = {
       requestId: newId,
       ticketNumber: newTicket,
@@ -43,7 +44,10 @@ export const serviceRequestService = {
       assetId: requestData.assetId || "a9b8c7d6-e5f4-4a3b-2c1d-0e9f8a7b6c5d",
       assetName: requestData.assetName || "Industrial Air Compressor AC-4500",
       submittedByUserId: "u1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c",
-      rawDescription: requestData.rawDescription,
+      description: finalDesc,
+      rawDescription: finalDesc,
+      descriptionSource: requestData.descriptionSource || "typed",
+      attachments: requestData.attachments || [],
       channel: requestData.channel || "WEB_PORTAL",
       status: "New",
       priority: requestData.priority || "HIGH",

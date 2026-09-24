@@ -76,18 +76,54 @@ flowchart TD
 
 | AWS Service | Architecture Responsibility | Key Configuration / Details |
 | :--- | :--- | :--- |
-| **Amazon Bedrock** | Core AI reasoning, unstructured entity extraction, safety checklist generation, missing info detection, and customer-facing report generation | Models: Claude 3.5 Sonnet (for complex technical extraction & report writing) / Claude 3 Haiku (for fast triage); Structured JSON output mode. |
-| **AWS Lambda** | Event-driven microservices compute executing request processing, AI orchestrations, job state transitions, and presigned URL generation | Node.js 20.x runtime, IAM least-privilege roles, warm start provisioned concurrency for critical API paths. |
+| **Amazon Bedrock** | Core AI reasoning, multimodal image/text diagnostic extraction, safety checklist generation, missing info detection, and customer report synthesis | Models: Claude 3.5 Sonnet (`anthropic.claude-3-5-sonnet-20241022-v2:0`); Multimodal vision support + Structured JSON output. |
+| **AWS Lambda** | Event-driven microservices compute executing request processing, AI orchestrations, job state transitions, and presigned URL generation | Python 3.12 runtime, IAM least-privilege roles, warm start concurrency for critical API paths. |
 | **Amazon API Gateway** | API entry point, route dispatching, request throttling, CORS handling, and JWT authorization verification | REST API type, integrated with Cognito User Pool Authorizer, request validation schemas. |
-| **Amazon DynamoDB** | Central single-table NoSQL datastore housing Users, Customers, Assets, Requests, AI Analyses, Jobs, Assignments, Updates, and Reports | Single-Table Design with GSI indexing for $O(1)$ performance, On-Demand Capacity mode, Point-In-Time Recovery (PITR). |
-| **Amazon S3** | Object storage for site photos, technician field attachments, equipment PDF manuals, and generated service report documents | Private bucket with AES-256 server-side encryption, CORS rules, and secure short-lived presigned URL access. |
+| **Amazon DynamoDB** | Central single-table NoSQL datastore housing Users, Customers, Assets, Requests, Attachments, AI Analyses, Jobs, Assignments, Updates, and Reports | Single-Table Design with GSI indexing for $O(1)$ performance, On-Demand Capacity mode, Point-In-Time Recovery (PITR). |
+| **Amazon S3** | Object storage for site photos, technician field attachments, equipment PDF manuals, and generated service report documents | Private bucket with AES-256 server-side encryption, CORS rules, and secure short-lived presigned URL access (900s expiration). |
 | **Amazon Cognito** | Enterprise User Pool authentication, RBAC claim injection into JWTs, and secure sign-in / password reset flows | Cognito User Pool + Identity Pool, custom claims (`custom:role`, `custom:org_id`), MFA support. |
-| **Amazon CloudWatch** | System observability, API log aggregation, Lambda error metrics, and security audit trail logging | Centralized log groups with retention policies, CloudWatch Alarms for 5xx errors and Bedrock throttling. |
+| **Amazon CloudWatch** | System observability, API log aggregation, Lambda error metrics, and security audit trail logging | Centralized log groups with 30-day retention policies, CloudWatch Alarms for 5xx errors and Bedrock throttling. |
 | **AWS Amplify / CloudFront** | Global edge distribution, static web hosting, SSL certificate management, and continuous deployment | Global CDN edge caching, custom domain routing, HTTPS enforcement. |
 
 ---
 
-## 3. Frontend Architecture & Folder Structure
+## 3. S3 Presigned Upload Architecture & Sequence
+
+To maintain high performance and prevent unnecessary bandwidth overhead on Lambda compute, binary evidence uploads (photos, audio files, diagnostic PDFs) stream directly from the browser to Amazon S3 using short-lived Presigned URLs:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Browser / Mobile App
+    participant APIGW as API Gateway
+    participant Lambda as Service Request Lambda
+    participant S3 as Amazon S3 (Private Bucket)
+    participant DDB as DynamoDB (ServiceForge)
+
+    User->>APIGW: POST /attachments/presign (fileName, contentType, sizeBytes)
+    APIGW->>Lambda: Validate Auth JWT & Org Boundary
+    Note over Lambda: Check size limits (<=15MB) & MIME type whitelist
+    Lambda->>S3: Generate Presigned PutObject URL (900s expiration)
+    Lambda->>DDB: Save Attachment Metadata (Status: PENDING_UPLOAD)
+    Lambda-->>User: Return { attachmentId, uploadUrl, s3ObjectKey }
+    
+    User->>S3: PUT binary file directly to uploadUrl
+    S3-->>User: 200 OK (Uploaded)
+
+    User->>APIGW: POST /service-requests (description, descriptionSource, attachments: [attachmentId])
+    APIGW->>Lambda: Create Service Request & Link Attachments
+    Lambda->>DDB: Update Attachment entity & ServiceRequest entity
+```
+
+### Key Architectural Principles:
+1. **Direct S3 Upload:** Large files **NEVER** pass through Lambda memory or API Gateway request payloads.
+2. **Private S3 Storage:** S3 buckets remain 100% private (`BlockPublicAccess = true`).
+3. **Short-Lived Access:** Upload URLs expire in **900 seconds (15 minutes)**. Download access is gated via short-lived GetObject presigned URLs generated on demand.
+4. **Tenant-Isolated S3 Key Structure:** S3 object keys strictly follow tenant organization boundaries: `attachments/orgs/<orgId>/<serviceRequestId>/<attachmentId>/<fileName>`.
+
+---
+
+## 4. Frontend Architecture & Folder Structure
 
 The frontend is a modular, component-driven Single Page Application (SPA) built with React 18, Vite 6, and Tailwind CSS v4.
 
@@ -96,7 +132,7 @@ src/
 ├── components/           # Reusable UI Components
 │   ├── common/           # Buttons, Badges, Modals, Cards, Input, Table
 │   ├── ai/               # AI Analysis Card, Confidence Pill, Safety Warning
-│   ├── requests/         # Request Form, Request List, Side-by-Side Review
+│   ├── requests/         # Request Form, Voice Recorder, Attachment Uploader, Review Screen
 │   ├── jobs/             # Job Card, Status Pipeline, Assignment Drawer
 │   ├── technicians/      # Technician Card, Skill Badge, Availability Bar
 │   └── reports/          # Service Report Viewer, PDF Export Preview
@@ -113,13 +149,14 @@ src/
 │   ├── AppLayout.jsx     # Main Enterprise Sidebar & Top Bar Layout
 │   └── AuthLayout.jsx    # Authentication Shell
 ├── services/             # API & Integration Layers
-│   ├── api.js            # Axios / Fetch HTTP Client with Auth Interceptor
+│   ├── api.js            # Fetch HTTP Client with Auth Interceptor
 │   ├── requestService.js # Service Requests endpoints
 │   ├── aiService.js      # Bedrock AI analysis endpoints
 │   ├── jobService.js      # Service Jobs endpoints
 │   └── s3Service.js      # Presigned URL upload helpers
 ├── hooks/                # Custom React Hooks
 │   ├── useAuth.js        # Auth state & user permissions
+│   ├── useVoiceRecorder.js # Voice recording state machine & STT handler
 │   ├── useRequests.js    # Request query & mutation hook
 │   └── useJobs.js        # Job management hook
 ├── lib/                  # Utilities & Helpers
@@ -134,7 +171,7 @@ src/
 
 ---
 
-## 4. End-to-End Execution Sequence
+## 5. End-to-End Execution Sequence
 
 ```mermaid
 sequenceDiagram
@@ -143,16 +180,20 @@ sequenceDiagram
     participant SPA as React Frontend
     participant APIGW as API Gateway
     participant Lambda as Lambda Compute
-    participant Bedrock as Amazon Bedrock
+    participant Bedrock as Amazon Bedrock (Claude 3.5 Sonnet)
     participant DDB as DynamoDB
     participant S3 as Amazon S3
 
-    Customer->>SPA: Submit unstructured service request text
-    SPA->>APIGW: POST /api/requests (Bearer JWT)
+    Customer->>SPA: Record voice / type text & attach evidence
+    SPA->>APIGW: POST /attachments/presign
+    APIGW->>Lambda: Generate S3 Presigned Upload URL
+    Lambda-->>SPA: Return presigned upload URL
+    SPA->>S3: Upload evidence images/docs directly to S3
+    SPA->>APIGW: POST /service-requests (description, descriptionSource, attachments)
     APIGW->>Lambda: Invoke RequestProcessing Lambda
-    Lambda->>DDB: Save raw ServiceRequest (Status: PENDING_AI)
-    Lambda->>Bedrock: Invoke Model (Prompt + Raw Request Text)
-    Bedrock-->>Lambda: Return Structured JSON (Symptoms, Tools, Parts, Safety)
+    Lambda->>DDB: Save ServiceRequest & Attachment metadata
+    Lambda->>Bedrock: Invoke Model (Description Text + Attached Images/Docs)
+    Bedrock-->>Lambda: Return Multimodal AI Analysis (Symptoms, Tools, Parts, Safety)
     Lambda->>DDB: Save AIAnalysis entity & update ServiceRequest (Status: PENDING_REVIEW)
     Lambda-->>SPA: Return Request & AI Analysis payload
     SPA-->>Customer: Display side-by-side Review & Decision Support screen
@@ -160,7 +201,7 @@ sequenceDiagram
 
 ---
 
-## 5. Implementation Phases & Roadmap
+## 6. Implementation Phases & Roadmap
 
 ```mermaid
 gantt
@@ -168,12 +209,13 @@ gantt
     dateFormat  YYYY-MM-DD
     section Phase 1: Foundation
     React + Vite + Tailwind Setup       :done, p1, 2026-09-22, 1d
-    section Phase 2: Architecture
-    Product & AWS Architecture Specs   :active, p2, 2026-09-22, 1d
-    section Phase 3: Frontend UI Shell
-    Layout, Navigation & Core Screens  :p3, 2026-09-23, 2d
-    section Phase 4: Mock Data & Flows
-    Interactive UI & Flow Validation   :p4, 2026-09-25, 2d
-    section Phase 5: AWS & Bedrock
-    Lambda, Bedrock & DynamoDB Integration :p5, 2026-09-27, 3d
+    section Phase 2: Architecture & Specs
+    Product, Multimodal & AWS Specs    :active, p2, 2026-09-22, 1d
+    section Phase 3: SAM Infrastructure
+    AWS SAM Serverless Template         :done, p3, 2026-09-23, 1d
+    section Phase 4: Backend Implementation
+    Lambda Microservices & Bedrock      :p4, 2026-09-24, 3d
+    section Phase 5: Verification & Testing
+    End-to-End Multimodal Validation   :p5, 2026-09-27, 2d
 ```
+

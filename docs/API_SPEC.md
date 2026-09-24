@@ -100,20 +100,29 @@ All API responses return a consistent JSON envelope:
 {
   "customerId": "c8f1e2a3-9b4d-4e5f-8a1b-2c3d4e5f6a7b",
   "assetId": "a9b8c7d6-e5f4-4a3b-2c1d-0e9f8a7b6c5d",
-  "rawDescription": "Our industrial compressor starts normally but becomes very noisy and shuts down after about ten minutes.",
+  "description": "Our industrial compressor starts normally but becomes very noisy and shuts down after about ten minutes.",
+  "descriptionSource": "edited_voice",
+  "attachments": [
+    { "attachmentId": "att-9988-a1b2" },
+    { "attachmentId": "att-9988-c3d4" }
+  ],
   "channel": "WEB_PORTAL"
 }
 ```
+- **Backend Validation:**
+  1. `description` must be non-empty string.
+  2. `descriptionSource` must be one of `["typed", "voice", "edited_voice"]`.
+  3. All `attachmentId` items must exist within the user's organization.
 - **Response Data (HTTP 201):** `ServiceRequest` object with `status: "SUBMITTED"`.
 
 #### `GET /service-requests`
 - **Authorization:** `ADMIN`, `SERVICE_MANAGER`, `DISPATCHER`, `CUSTOMER`
 - **Query Parameters:** `status` (String, Optional), `priority` (String, Optional)
-- **Response Data:** Array of `ServiceRequest` objects.
+- **Response Data:** Array of `ServiceRequest` objects containing `description`, `descriptionSource`, and `attachments` arrays.
 
 #### `GET /service-requests/{id}`
 - **Authorization:** `ADMIN`, `SERVICE_MANAGER`, `DISPATCHER`, `CUSTOMER`
-- **Response Data:** `ServiceRequest` object.
+- **Response Data:** Full `ServiceRequest` object including populated `attachments` metadata list.
 
 #### `PATCH /service-requests/{id}`
 - **Authorization:** `ADMIN`, `SERVICE_MANAGER`
@@ -228,25 +237,41 @@ All API responses return a consistent JSON envelope:
 
 ### 2.11 Attachments API
 #### `POST /attachments/presign`
-- **Description:** Generates a secure, 15-minute S3 presigned URL for binary file uploads (photos, audio, signatures).
+- **Description:** Generates a secure, 15-minute S3 presigned URL for direct client binary file uploads (photos, diagnostic PDFs, documents).
 - **Authorization:** `ADMIN`, `SERVICE_MANAGER`, `DISPATCHER`, `TECHNICIAN`, `CUSTOMER`
 - **Request Body:**
 ```json
 {
-  "entityType": "SERVICE_REQUEST",
-  "entityId": "r1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
-  "fileName": "compressor_audio.m4a",
-  "contentType": "audio/m4a"
+  "serviceRequestId": "r1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+  "fileName": "compressor_nameplate.jpg",
+  "contentType": "image/jpeg",
+  "sizeBytes": 2450000
 }
 ```
+- **Backend Validation Rules:**
+  1. Authenticated organization boundary match (`custom:org_id`).
+  2. `contentType` must be in whitelist (`image/jpeg`, `image/png`, `image/webp`, `image/heic`, `application/pdf`, `text/plain`, `text/csv`).
+  3. `sizeBytes` must be $\le$ 15,728,640 bytes (15 MB).
+  4. `fileName` must be sanitized to remove directory traversal characters (`..`, `/`, `\`).
 - **Response Data (HTTP 200):**
 ```json
 {
-  "uploadUrl": "https://serviceforge-ai-attachments.s3.ap-south-1.amazonaws.com/attachments/requests/r1d2e3f4/compressor_audio.m4a?AWSAccessKeyId=...",
-  "s3ObjectKey": "attachments/requests/r1d2e3f4/compressor_audio.m4a",
+  "attachmentId": "att-9988-a1b2",
+  "uploadUrl": "https://serviceforge-ai-attachments.s3.ap-south-1.amazonaws.com/attachments/orgs/org-8841-alpha/requests/r1d2e3f4/att-9988-a1b2/compressor_nameplate.jpg?AWSAccessKeyId=...",
+  "s3ObjectKey": "attachments/orgs/org-8841-alpha/requests/r1d2e3f4/att-9988-a1b2/compressor_nameplate.jpg",
   "expiresInSeconds": 900
 }
 ```
+
+#### `POST /attachments/{id}/confirm`
+- **Description:** Confirms successful S3 direct upload and activates attachment metadata record in DynamoDB.
+- **Authorization:** `ADMIN`, `SERVICE_MANAGER`, `DISPATCHER`, `TECHNICIAN`, `CUSTOMER`
+- **Response Data (HTTP 200):** `Attachment` metadata object with `status: "ACTIVE"`.
+
+#### `DELETE /attachments/{id}`
+- **Description:** Removes attachment metadata from DynamoDB and deletes S3 object.
+- **Authorization:** `ADMIN`, `SERVICE_MANAGER`, `DISPATCHER` (or `CUSTOMER` owner prior to request approval)
+- **Response Data (HTTP 200):** `{ "success": true, "message": "Attachment deleted successfully." }`
 
 ---
 

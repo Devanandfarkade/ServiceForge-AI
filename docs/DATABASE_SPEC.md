@@ -126,7 +126,9 @@ Query priority alerts, SLA deadlines, and administrative audit logs.
 - `customerId` (String, UUID)
 - `assetId` (String, UUID, Optional)
 - `submittedByUserId` (String, UUID)
-- `rawDescription` (String)
+- `description` (String: Final user-reviewed text description)
+- `descriptionSource` (String: `typed` | `voice` | `edited_voice`)
+- `attachments` (List of Strings: `attachmentId` UUIDs)
 - `status` (String: `SUBMITTED` | `AI_ANALYZING` | `PENDING_REVIEW` | `APPROVED` | `REJECTED`)
 - `priority` (String: `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`)
 - `createdAt` (String, ISO8601)
@@ -147,7 +149,9 @@ Query priority alerts, SLA deadlines, and administrative audit logs.
   "customerId": "c8f1e2a3-9b4d-4e5f-8a1b-2c3d4e5f6a7b",
   "assetId": "a9b8c7d6-e5f4-4a3b-2c1d-0e9f8a7b6c5d",
   "submittedByUserId": "u1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c",
-  "rawDescription": "Our industrial compressor starts normally but becomes very noisy and shuts down after about ten minutes.",
+  "description": "Our industrial compressor starts normally but becomes very noisy and shuts down after about ten minutes.",
+  "descriptionSource": "edited_voice",
+  "attachments": ["att-9988-a1b2", "att-9988-c3d4"],
   "status": "PENDING_REVIEW",
   "priority": "HIGH",
   "createdAt": "2026-09-22T10:15:00Z",

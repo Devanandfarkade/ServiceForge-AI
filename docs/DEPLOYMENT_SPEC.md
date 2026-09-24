@@ -160,7 +160,24 @@ Resources:
 
 ---
 
-## 5. Rollback Strategy & Monitoring
+## 5. Required AWS Services Breakdown for Multimodal System
+
+The ServiceForge AI multimodal intake & field operations architecture relies on the following core AWS services:
+
+| AWS Service | Deployment Role | Target Configuration |
+| :--- | :--- | :--- |
+| **Amazon S3** | Private evidence photo, audio & report document storage | Encryption enabled (`AES256`), Block Public Access (`true`), Presigned URLs (15-min expiration). |
+| **Amazon Transcribe** | Speech-to-Text conversion for voice note inputs | Managed speech recognition service parsing audio streams/recordings into text. |
+| **Amazon Bedrock** | Multimodal reasoning & structured decision support | Model: `anthropic.claude-3-5-sonnet-20241022-v2:0` (Text + Vision OCR & document reasoning). |
+| **AWS Lambda** | Event-driven microservices compute | Runtime: Python 3.12, least-privilege IAM execution roles. |
+| **Amazon API Gateway** | Serverless REST API stage & authorization | REST API stage (`prod`), Cognito User Pool Authorizer, CORS headers. |
+| **Amazon DynamoDB** | Single-table datastore | Table: `ServiceForge`, On-demand (`PAY_PER_REQUEST`), PITR enabled. |
+
+> **DESTRUCTIVE ACTION NOTICE:** Infrastructure specification only. No SAM deployment (`sam deploy`) or cloud resource creation commands will be executed until explicitly requested by the user.
+
+---
+
+## 6. Rollback Strategy & Monitoring
 
 - **Amplify Rollback:** Instant one-click rollback to previous atomic frontend build deployment.
 - **SAM Lambda Rollback:** Uses AWS CloudFormation stack rollback if deployment or post-deploy health check fails.

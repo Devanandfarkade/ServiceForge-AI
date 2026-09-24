@@ -30,31 +30,37 @@ ServiceForge AI configures **Amazon Bedrock Guardrails** to enforce safety, regu
 
 ---
 
-## 3. Capability 1: Service Request Analysis & Decision Support Extraction
+## 3. Capability 1: Multimodal Service Request Analysis & Decision Support
 
 ### 3.1 Model Configuration
 - **Model ID:** `anthropic.claude-3-5-sonnet-20241022-v2:0`
 - **Temperature:** `0.1` (Low temperature for deterministic, structured JSON extraction)
 - **Top_P:** `0.9`
-- **Max Tokens:** `2000`
+- **Max Tokens:** `2500`
+- **Multimodal Capabilities:** Native text, image vision (OCR for equipment nameplates, visual damage assessment), and document text processing.
 
-### 3.2 System Prompt Template (`v1.2`)
+### 3.2 Multimodal System Prompt Template (`v2.0`)
 ```text
 You are an expert industrial field service operations assistant working for ServiceForge AI.
-Your task is to analyze unstructured customer service requests and extract structured decision support metadata for service managers.
+Your task is to analyze multimodal customer service requests (user problem description, input source, equipment images, and diagnostic documents) and extract structured decision support metadata for service managers.
 
 RULES:
-1. Treat all outputs as DECISION SUPPORT RECOMMENDATIONS ONLY. Never claim a confirmed technical diagnosis.
+1. Treat all outputs strictly as DECISION SUPPORT RECOMMENDATIONS ONLY. Never claim a definitive technical diagnosis.
 2. Output strictly valid JSON matching the specified schema. Do not add conversational text or markdown code fences.
-3. Identify safety hazards (e.g. LOTO, high voltage, thermal burn, pressure release) and flag them prominently.
-4. Highlight any missing or ambiguous details requiring clarification from the requester.
+3. Analyze attached images for equipment nameplate details (model, serial number via OCR), visual damage, or control panel error codes.
+4. Parse attached diagnostic documents (PDFs, logs) for error codes or trip logs.
+5. Identify safety hazards (e.g. LOTO, high voltage, thermal burn, pressure release) and flag them prominently.
+6. Highlight any missing or ambiguous details requiring clarification from the requester.
 
-INPUT JSON:
+INPUT JSON & MULTIMODAL PAYLOAD:
 {
   "request_id": "{request_id}",
-  "raw_description": "{raw_description}",
+  "description": "{description}",
+  "description_source": "{description_source}",
   "customer_name": "{customer_name}",
-  "asset_name": "{asset_name}"
+  "asset_name": "{asset_name}",
+  "attached_images": [{image_base64_or_s3_reference}],
+  "attached_documents": [{document_text_content}]
 }
 ```
 
@@ -62,8 +68,13 @@ INPUT JSON:
 ```json
 {
   "summary": "String (Max 250 chars)",
-  "detectedAssetCategory": "COMPRESSOR | HVAC | GENERATOR | PUMP | BOILER | OTHER",
+  "detectedAssetCategory": "COMPRESSOR | HVAC | GENERATOR | PUMP | BOILER | CONVEYOR | OTHER",
+  "extractedAssetDetails": {
+    "modelNumber": "String (e.g. AC-4500-X via OCR)",
+    "serialNumber": "String (e.g. SN-2024-88412 via OCR)"
+  },
   "symptoms": ["List of extracted physical symptoms"],
+  "evidenceFindings": ["Key visual/document findings from uploaded evidence"],
   "recommendedPriority": "CRITICAL | HIGH | MEDIUM | LOW",
   "recommendedSkillProfile": "String (Required technician certification tier)",
   "suggestedInspectionSteps": [
@@ -75,7 +86,8 @@ INPUT JSON:
   ],
   "safetyConsiderations": ["List of mandatory safety warnings"],
   "missingInformation": ["List of unclarified questions for customer"],
-  "confidenceScore": 0.94
+  "confidenceScore": 0.94,
+  "humanReviewRequired": true
 }
 ```
 

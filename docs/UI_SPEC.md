@@ -63,11 +63,20 @@ flowchart LR
 
 ### Detailed Flow Specifications:
 
-#### Flow A: Creating a Service Request
-- User (Customer or Service Manager) clicks **"+ New Request"**.
-- Fills minimal fields: Customer Account, Target Equipment (optional), and Raw Issue Description text box.
-- Option to attach voice recordings or site photos.
-- Submits request -> Triggering status `SUBMITTED`.
+#### Flow A: Creating a Multimodal Service Request
+- User clicks **"+ New Request"**.
+- Fills minimal fields: Customer Account, Target Equipment (optional).
+- **1. Describe Problem:**
+  - Input Mode Toggle: `[ Type ] [ 🎙 Speak ]`
+  - Typed Mode: Multiline text area.
+  - Voice Mode: `[ 🎙 Start Speaking ]` -> Audio waveform visualizer -> `[ 🔴 Recording... ] [ Stop ]` -> Speech-to-Text conversion -> Editable preview box -> `[ Edit ] [ Record Again ] [ Clear ]`.
+  - User reviews and approves final description.
+- **2. Add Evidence & Attachments:**
+  - Actions: `[ 📷 Take Photo ] [ 📎 Upload Files ]`
+  - Displays uploaded evidence cards with thumbnails, filename, type, size, and `Remove (✕)` action.
+- **3. Review & Submit:**
+  - Displays review summary of description, `descriptionSource` indicator, and attached evidence.
+  - Submits request -> Triggering status `SUBMITTED`.
 
 #### Flow B: AI Analyzing the Request
 - Triggered automatically upon request submission.
@@ -153,3 +162,68 @@ The AI Analysis UI must strictly adhere to the decision support philosophy:
 | [ Reject Request ]                                [ Edit AI Specs ]  [ Approve & Create Job ]|
 +---------------------------------------------------------------------------------------------+
 ```
+
+---
+
+## 5. Multimodal Create Request Screen UI Mockup
+
+```text
++---------------------------------------------------------------------------------------------+
+| CREATE SERVICE REQUEST                                                      [ Cancel ] [ Submit ]|
++---------------------------------------------------------------------------------------------+
+|                                                                                             |
+|  SELECT CUSTOMER & EQUIPMENT                                                                |
+|  Customer: [ Industrial Plastics Corp ▾ ]    Equipment: [ Air Compressor AC-4500 ▾ ]        |
+|                                                                                             |
+|  1. DESCRIBE THE PROBLEM                                                                    |
+|  Input Mode: ( • ) Type Text   (   ) 🎙 Speak Voice Note                                    |
+|  +---------------------------------------------------------------------------------------+  |
+|  | The industrial air compressor starts normally but develops heavy knocking noise after |  |
+|  | 10 minutes and shuts down on thermal overload alert code E-402.                       |  |
+|  +---------------------------------------------------------------------------------------+  |
+|  Description Source: [ 🎙 edited_voice ]   Status: User Reviewed & Approved                 |
+|                                                                                             |
+|  VOICE INPUT CONTROLS (When Speak Mode Selected):                                           |
+|  [ 🎙 Start Speaking ]  [ 🔴 Recording (0:18) ]  [ ⏹ Stop ]                                    |
+|  Transcription Preview: "The compressor starts normally..." [ Edit Text ] [ Record Again ]  |
+|                                                                                             |
+|  2. ADD EVIDENCE & ATTACHMENTS                                                             |
+|  [ 📷 Take Photo (Camera) ]  [ 📎 Upload Images & Files ]                                     |
+|                                                                                             |
+|  UPLOADED EVIDENCE (2 Files):                                                               |
+|  +-----------------------------+  +-----------------------------+                            |
+|  | 🖼 nameplate.jpg            |  | 📄 error_log.pdf            |                            |
+|  | Image/JPEG • 2.4 MB         |  | Application/PDF • 1.1 MB    |                            |
+|  | [ View Preview ]  [ Remove ✕]|  | [ View Preview ]  [ Remove ✕]|                            |
+|  +-----------------------------+  +-----------------------------+                            |
+|                                                                                             |
+|  3. REVIEW & SUBMIT                                                                        |
+|  [ Submit Request & Trigger AI Analysis → ]                                                  |
++---------------------------------------------------------------------------------------------+
+```
+
+---
+
+## 6. Responsive UX & Accessibility Guidelines
+
+### 6.1 Device Adaptation Matrix
+- **Mobile Devices (< 768px):**
+  - Primary actions prioritized: `🎙 Speak Voice Note` and `📷 Take Photo` (device camera integration).
+  - Single-column stacked layouts to prevent horizontal scrolling.
+  - Large touch targets (minimum `44x44px`) for field technicians wearing gloves.
+- **Desktop & Tablets (≥ 768px):**
+  - Primary actions prioritized: `Type Text` and `📎 Upload Files`.
+  - Multi-column side-by-side review panels.
+
+### 6.2 Breakpoint Zoom Scaling Rules
+To guarantee stability across various browser zoom levels (100%, 90%, 80%, 75%, 67%, 50%):
+- Use relative unit systems (`rem`, `em`, percentages) and Tailwind flex/grid layout constraints.
+- Containers wrap flex items automatically (`flex-wrap`).
+- Table structures implement `overflow-x-auto` to prevent page-level horizontal scrollbars.
+
+### 6.3 Accessibility (a11y) Rules
+- **Keyboard Navigation:** Full focus ring indicators (`ring-2 ring-blue-500`) across all interactive elements (`buttons`, `inputs`, `cards`, `tabs`).
+- **Screen Reader Support:** All icon-only buttons include explicit `aria-label` attributes (e.g. `aria-label="Remove attachment nameplate.jpg"`).
+- **Text Labels on Actions:** Icon controls always display visible text labels alongside icons (e.g., `📷 Take Photo`, `🎙 Start Speaking`).
+- **Non-Color Status Indicators:** Status badges combine text labels, icons, and contrast colors (e.g., `✓ Completed`, `⚠ Action Required`).
+
