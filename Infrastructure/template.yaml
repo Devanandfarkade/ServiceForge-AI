@@ -29,7 +29,6 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        AWS_REGION: !Ref AWS::Region
         ENVIRONMENT: !Ref Environment
         DYNAMODB_TABLE_NAME: !Ref ServiceForgeTable
         S3_BUCKET_NAME: !Ref ServiceForgeAttachmentsBucket
@@ -161,11 +160,9 @@ Resources:
           DeveloperOnlyAttribute: false
           Mutable: true
           Required: false
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: ServiceForge-AI
+      UserPoolTags:
+        Environment: !Ref Environment
+        Project: ServiceForge-AI
 
   ServiceForgeUserPoolClient:
     Type: AWS::Cognito::UserPoolClient

@@ -1,0 +1,73 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "IAMPolicyAndRoleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:CreatePolicy",
+        "iam:DeletePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:PassRole",
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::717279691067:policy/ServiceForge*",
+        "arn:aws:iam::717279691067:role/ServiceForge*"
+      ]
+    },
+    {
+      "Sid": "CloudFormationStackManagement",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:ValidateTemplate",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:ListChangeSets",
+        "cloudformation:DescribeEvents"
+      ],
+      "Resource": [
+        "arn:aws:cloudformation:ap-south-1:717279691067:stack/serviceforge-*/*",
+        "arn:aws:cloudformation:ap-south-1:717279691067:stack/aws-sam-cli-managed-default/*"
+      ]
+    },
+    {
+      "Sid": "ServerlessResourcesManagement",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:*",
+        "lambda:*",
+        "dynamodb:*",
+        "s3:*",
+        "cognito-idp:*",
+        "logs:*",
+        "cloudwatch:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

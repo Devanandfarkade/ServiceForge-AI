@@ -113,6 +113,7 @@ Infrastructure/
 ├── README.md                   # Infrastructure & Deployment Guide
 └── policies/
     ├── bedrock_invoke_policy.json   # IAM Policy: Bedrock Model Invocation
+    ├── deploy_policy.json           # IAM Policy: ServiceForgeDeployPolicy (Deployment permissions)
     ├── dynamodb_crud_policy.json    # IAM Policy: Single-Table DynamoDB Access
     └── s3_attachments_policy.json   # IAM Policy: Private S3 Attachments Access
 ```
