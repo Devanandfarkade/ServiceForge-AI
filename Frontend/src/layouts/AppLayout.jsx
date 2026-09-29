@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from '../lib/router';
 import { useTheme } from '../lib/theme';
 import { useNotifications } from '../lib/notifications';
+import { useAuth } from '../lib/AuthContext';
 import { Avatar } from '../components/ui/Avatar';
 import { currentUser, currentOrganization } from '../data/mockData';
 
@@ -9,11 +10,15 @@ export function AppLayout({ children }) {
   const { path, navigate } = useRouter();
   const { theme, toggleTheme } = useTheme();
   const { notifications, unreadCount, markAllAsRead, markAsRead } = useNotifications();
+  const { user: authUser, signOut: authSignOut } = useAuth();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [signOutToast, setSignOutToast] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // Use live user data when authenticated, fall back to mock for demo mode
+  const displayUser = authUser || currentUser;
 
   const profileRef = useRef(null);
   const notifRef = useRef(null);
@@ -133,19 +138,29 @@ export function AppLayout({ children }) {
     }
   ];
 
-  const handleSignOutMock = () => {
+  const handleSignOut = async () => {
     setProfileDropdownOpen(false);
-    setSignOutToast(true);
-    setTimeout(() => setSignOutToast(false), 3000);
+    setIsSigningOut(true);
+    try {
+      await authSignOut();
+      // AuthContext will set user to null → RouterSwitch will show LoginPage
+    } catch {
+      setIsSigningOut(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090D16] text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-500 selection:text-white">
-      {/* Mock Sign Out Toast */}
-      {signOutToast && (
-        <div className="fixed top-4 right-4 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2">
-          <span>ℹ</span>
-          <span>Mock Sign Out: Session preserved for preview.</span>
+      {/* Sign Out Overlay */}
+      {isSigningOut && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-4 flex items-center gap-3 shadow-2xl">
+            <svg className="animate-spin w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Signing out…</span>
+          </div>
         </div>
       )}
 
@@ -316,13 +331,13 @@ export function AppLayout({ children }) {
               }}
               className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors select-none"
             >
-              <Avatar src={currentUser.avatarUrl} name={currentUser.fullName} size="sm" />
+              <Avatar src={displayUser.avatarUrl} name={displayUser.fullName} size="sm" />
               <div className="hidden md:block text-left">
                 <div className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight">
-                  {currentUser.fullName}
+                  {displayUser.fullName}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight font-medium">
-                  Service Manager
+                  {displayUser.role?.replace(/_/g, ' ') || 'Service Manager'}
                 </div>
               </div>
               <svg className="w-3.5 h-3.5 text-slate-400 hidden sm:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -335,10 +350,10 @@ export function AppLayout({ children }) {
               <div className="absolute right-0 mt-2 w-60 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden text-xs animate-in fade-in slide-in-from-top-2 duration-150">
                 {/* Header Info */}
                 <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 flex items-center gap-3">
-                  <Avatar src={currentUser.avatarUrl} name={currentUser.fullName} size="md" />
+                  <Avatar src={displayUser.avatarUrl} name={displayUser.fullName} size="md" />
                   <div>
-                    <div className="font-bold text-slate-900 dark:text-slate-100">{currentUser.fullName}</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Service Manager</div>
+                    <div className="font-bold text-slate-900 dark:text-slate-100">{displayUser.fullName}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">{displayUser.role?.replace(/_/g, ' ') || 'Service Manager'}</div>
                   </div>
                 </div>
 
@@ -389,8 +404,9 @@ export function AppLayout({ children }) {
 
                 <div className="p-2 border-t border-slate-100 dark:border-slate-800">
                   <button
-                    onClick={handleSignOutMock}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 font-bold transition-colors text-left"
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 font-bold transition-colors text-left disabled:opacity-50"
                   >
                     <span className="text-base">🚪</span>
                     <div>
