@@ -13,7 +13,7 @@
  *   const result = await apiClient.post('/service-requests', { description: '...' });
  */
 
-import { getValidAccessToken, signOut } from './cognito';
+import { getValidIdToken, signOut } from './cognito';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -43,10 +43,10 @@ function getUserSafeMessage(errorCode, fallbackMessage) {
  * @returns {Promise<any>} - Resolved data from response envelope
  */
 async function request(method, path, body = null, options = {}) {
-  // Get valid (refreshed-if-needed) access token
-  const accessToken = await getValidAccessToken();
+  // Get valid (refreshed-if-needed) ID token
+  const idToken = await getValidIdToken();
 
-  if (!accessToken) {
+  if (!idToken) {
     // Redirect to login; handle gracefully
     window.dispatchEvent(new CustomEvent('sf:auth:expired'));
     throw Object.assign(new Error('Authentication required.'), {
@@ -59,7 +59,7 @@ async function request(method, path, body = null, options = {}) {
 
   const headers = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${accessToken}`,
+    Authorization: `Bearer ${idToken}`,
     ...options.headers,
   };
 

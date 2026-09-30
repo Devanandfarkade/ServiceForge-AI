@@ -1,37 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Input';
 import { Table, TableRow, TableCell } from '../components/ui/Table';
 import { StatusBadge, PriorityBadge } from '../components/ui/Badge';
-import { serviceJobService } from '../services/serviceJobService';
 import { useRouter } from '../lib/router';
 import { LoadingSpinner, EmptyState } from '../components/ui/LoadingSpinner';
+import { useServiceJobs } from '../hooks/useServiceJobs';
 
 export function ServiceJobsPage() {
   const { navigate } = useRouter();
-  const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
 
-  useEffect(() => {
-    async function loadJobs() {
-      setLoading(true);
-      try {
-        const data = await serviceJobService.getJobs({
-          status: statusFilter,
-          priority: priorityFilter
-        });
-        setJobs(data);
-      } catch (err) {
-        console.error('Failed to load jobs:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadJobs();
-  }, [statusFilter, priorityFilter]);
+  // Live data via hook — filters passed to API/mock
+  const { jobs, isLoading: loading, error } = useServiceJobs({
+    status: statusFilter,
+    priority: priorityFilter
+  });
+
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -73,11 +60,23 @@ export function ServiceJobsPage() {
         </div>
       </Card>
 
+      {/* API Error Banner */}
+      {error && (
+        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2" role="alert">
+          <span className="font-bold text-base">⚠</span>
+          <div>
+            <div className="font-bold">Could not load service jobs from the server</div>
+            <div className="font-medium opacity-80">{error}</div>
+          </div>
+        </div>
+      )}
+
       {/* Jobs Table */}
       {loading ? (
         <LoadingSpinner label="Loading service jobs dispatch board..." />
       ) : jobs.length === 0 ? (
         <EmptyState title="No Service Jobs Found" description="There are no active jobs matching your filters." />
+
       ) : (
         <Table headers={['Job ID', 'Work Order Title', 'Customer', 'Assigned Tech', 'Priority', 'Status', 'SLA Target', 'Action']}>
           {jobs.map((job) => (

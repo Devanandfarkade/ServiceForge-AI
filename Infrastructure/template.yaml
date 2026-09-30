@@ -223,10 +223,24 @@ Resources:
       StageName: !Ref Environment
       Cors:
         AllowMethods: "'GET,POST,PATCH,OPTIONS,PUT,DELETE'"
-        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,Accept'"
         AllowOrigin: "'*'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,Accept'"
+              Access-Control-Allow-Methods: "'GET,POST,PATCH,OPTIONS,PUT,DELETE'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,Accept'"
+              Access-Control-Allow-Methods: "'GET,POST,PATCH,OPTIONS,PUT,DELETE'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt ServiceForgeUserPool.Arn
@@ -426,15 +440,51 @@ Resources:
                   - !Sub '${ServiceForgeAttachmentsBucket.Arn}/*'
 
   # ============================================================================
-  # 6. AWS LAMBDA MICROSERVICES FOUNDATION
+  # 6. AWS LAMBDA MICROSERVICES FOUNDATION & SHARED LAYER
   # ============================================================================
+  ServiceForgeSharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub 'serviceforge-shared-layer-${Environment}'
+      Description: Shared Python modules for ServiceForge AI (shared.auth, shared.responses, shared.dynamodb, etc.)
+      ContentUri: ../Backend/shared_layer/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+
   ServiceRequestFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ../Backend/functions/service-request/
       Handler: handler.lambda_handler
       Role: !GetAtt ServiceRequestLambdaRole.Arn
+      Layers:
+        - !Ref ServiceForgeSharedLayer
       Events:
+        OptionsServiceRequests:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-requests
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceRequestsId:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-requests/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceRequestsAnalyze:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-requests/{id}/analyze
+            Method: options
+            Auth:
+              Authorizer: NONE
         CreateRequest:
           Type: Api
           Properties:
@@ -472,7 +522,49 @@ Resources:
       CodeUri: ../Backend/functions/service-job/
       Handler: handler.lambda_handler
       Role: !GetAtt ServiceJobLambdaRole.Arn
+      Layers:
+        - !Ref ServiceForgeSharedLayer
       Events:
+        OptionsServiceJobs:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsId:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsAssign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs/{id}/assign
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsUpdates:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs/{id}/updates
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsComplete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs/{id}/complete
+            Method: options
+            Auth:
+              Authorizer: NONE
         CreateJob:
           Type: Api
           Properties:
@@ -516,7 +608,25 @@ Resources:
       CodeUri: ../Backend/functions/technician/
       Handler: handler.lambda_handler
       Role: !GetAtt TechnicianLambdaRole.Arn
+      Layers:
+        - !Ref ServiceForgeSharedLayer
       Events:
+        OptionsTechnicians:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /technicians
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsTechniciansId:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /technicians/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
         ListTechnicians:
           Type: Api
           Properties:
@@ -536,7 +646,25 @@ Resources:
       CodeUri: ../Backend/functions/report/
       Handler: handler.lambda_handler
       Role: !GetAtt ReportLambdaRole.Arn
+      Layers:
+        - !Ref ServiceForgeSharedLayer
       Events:
+        OptionsReportGenerate:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs/{id}/report/generate
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsReport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /service-jobs/{id}/report
+            Method: options
+            Auth:
+              Authorizer: NONE
         GenerateReport:
           Type: Api
           Properties:
@@ -556,7 +684,33 @@ Resources:
       CodeUri: ../Backend/functions/attachment/
       Handler: handler.lambda_handler
       Role: !GetAtt AttachmentLambdaRole.Arn
+      Layers:
+        - !Ref ServiceForgeSharedLayer
       Events:
+        OptionsAttachmentPresign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /attachments/presign
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsAttachmentConfirm:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /attachments/{id}/confirm
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsAttachmentDelete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServiceForgeApi
+            Path: /attachments/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
         PresignAttachment:
           Type: Api
           Properties:

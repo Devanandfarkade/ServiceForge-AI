@@ -9,13 +9,18 @@ import { VoiceRecorder } from '../components/requests/VoiceRecorder';
 import { EvidenceUploader } from '../components/requests/EvidenceUploader';
 import { customerService } from '../services/customerService';
 import { assetService } from '../services/assetService';
-import { serviceRequestService } from '../services/serviceRequestService';
-import { serviceJobService } from '../services/serviceJobService';
 import { attachmentService } from '../services/attachmentService';
 import { useRouter } from '../lib/router';
+import { useAuth } from '../lib/AuthContext';
+import { liveServiceRequestService } from '../services/liveServiceRequestService';
+import { liveServiceJobService } from '../services/liveServiceJobService';
+import { liveAttachmentService } from '../services/liveAttachmentService';
+import { serviceRequestService } from '../services/serviceRequestService'; // mock fallback
+import { serviceJobService } from '../services/serviceJobService'; // mock fallback
 
 export function CreateServiceRequestPage() {
   const { navigate } = useRouter();
+  const { isLoggedIn } = useAuth();
 
   // Form options state
   const [customers, setCustomers] = useState([]);
@@ -40,6 +45,9 @@ export function CreateServiceRequestPage() {
   const [processingStepText, setProcessingStepText] = useState('Preparing your service request...');
   const [createdRequest, setCreatedRequest] = useState(null);
   const [aiResult, setAiResult] = useState(null);
+  const [submissionError, setSubmissionError] = useState(null);
+  const [isDispatchingJob, setIsDispatchingJob] = useState(false);
+  const [dispatchError, setDispatchError] = useState(null);
 
   useEffect(() => {
     async function loadFormOptions() {
@@ -78,6 +86,7 @@ export function CreateServiceRequestPage() {
   const handleAnalyzeWithAI = async (e) => {
     e.preventDefault();
     setValidationError('');
+    setSubmissionError(null);
 
     if (!description.trim()) {
       setValidationError('Please describe the problem before continuing.');
@@ -95,44 +104,105 @@ export function CreateServiceRequestPage() {
     const cust = customers.find(c => c.customerId === selectedCustomerId);
     const ast = assets.find(a => a.assetId === selectedAssetId);
 
-    const attachmentsMetadata = attachments.map(att => ({
-      id: att.id,
-      fileName: att.fileName,
-      contentType: att.contentType,
-      size: att.size,
-      type: att.type
-    }));
+    try {
+      let newReq;
 
-    const newReq = await serviceRequestService.createRequest({
-      customerId: selectedCustomerId,
-      customerName: cust ? cust.companyName : 'Industrial Plastics Corp',
-      assetId: selectedAssetId,
-      assetName: ast ? ast.name : 'Industrial Air Compressor AC-4500',
-      rawDescription: description,
-      descriptionSource,
-      priority,
-      attachments: attachmentsMetadata
-    });
+      if (isLoggedIn) {
+        // Step 1: Upload attachments to S3 via presigned URLs
+        let uploadedAttachments = [];
+        if (attachments.length > 0) {
+          setProcessingStepText('Uploading evidence files to secure storage...');
+          // We need a temporary requestId prefix; we use a client-side temp ID
+          // The real requestId will be assigned by the backend on creation
+          const tempPrefix = `tmp-${Date.now()}`;
+          try {
+            uploadedAttachments = await liveAttachmentService.uploadAll(attachments, tempPrefix);
+          } catch (uploadErr) {
+            setSubmissionError(`Attachment upload failed: ${uploadErr.message}`);
+            setIsAnalyzing(false);
+            return;
+          }
+        }
 
-    setCreatedRequest(newReq);
+        setProcessingStepText('Preparing your service request...');
+        setTimeout(() => setProcessingStepText('Reviewing the problem description and evidence...'), 400);
+        setTimeout(() => setProcessingStepText('Assessing equipment telemetry and fault history...'), 800);
+        setTimeout(() => setProcessingStepText('Evaluating required technician skill profiles & tools...'), 1200);
 
-    // Processing step message transitions
-    setProcessingStepText('Preparing your service request...');
-    setTimeout(() => setProcessingStepText('Reviewing the problem description and evidence...'), 400);
-    setTimeout(() => setProcessingStepText('Assessing equipment telemetry and fault history...'), 800);
-    setTimeout(() => setProcessingStepText('Evaluating required technician skill profiles & tools...'), 1200);
+        // Step 2: Create the request with S3 attachment metadata
+        newReq = await liveServiceRequestService.createRequest({
+          customerId: selectedCustomerId,
+          customerName: cust ? cust.companyName : 'Industrial Plastics Corp',
+          assetId: selectedAssetId,
+          assetName: ast ? ast.name : 'Industrial Air Compressor AC-4500',
+          rawDescription: description,
+          descriptionSource,
+          priority,
+          attachments: uploadedAttachments,
+          channel: 'WEB_PORTAL',
+        });
 
-    setTimeout(async () => {
-      const result = await serviceRequestService.analyzeRequest(newReq.requestId);
-      setAiResult(result);
+        setCreatedRequest(newReq);
+
+        // Step 3: Trigger AI analysis
+        await new Promise(resolve => setTimeout(resolve, 1600));
+        const result = await liveServiceRequestService.analyzeRequest(newReq.requestId);
+        setAiResult(result);
+      } else {
+        // Unauthenticated — use mock service (demo mode)
+        const attachmentsMetadata = attachments.map(att => ({
+          id: att.id,
+          fileName: att.fileName,
+          contentType: att.contentType,
+          size: att.size,
+          type: att.type
+        }));
+
+        setProcessingStepText('Preparing your service request...');
+        setTimeout(() => setProcessingStepText('Reviewing the problem description and evidence...'), 400);
+        setTimeout(() => setProcessingStepText('Assessing equipment telemetry and fault history...'), 800);
+        setTimeout(() => setProcessingStepText('Evaluating required technician skill profiles & tools...'), 1200);
+
+        newReq = await serviceRequestService.createRequest({
+          customerId: selectedCustomerId,
+          customerName: cust ? cust.companyName : 'Industrial Plastics Corp',
+          assetId: selectedAssetId,
+          assetName: ast ? ast.name : 'Industrial Air Compressor AC-4500',
+          rawDescription: description,
+          descriptionSource,
+          priority,
+          attachments: attachmentsMetadata
+        });
+
+        setCreatedRequest(newReq);
+
+        await new Promise(resolve => setTimeout(resolve, 1600));
+        const result = await serviceRequestService.analyzeRequest(newReq.requestId);
+        setAiResult(result);
+      }
+    } catch (err) {
+      setSubmissionError(err.message || 'Submission failed. Please try again.');
+    } finally {
       setIsAnalyzing(false);
-    }, 1600);
+    }
   };
 
   const handleCreateServiceJob = async () => {
     if (!createdRequest || !aiResult) return;
-    const newJob = await serviceJobService.createJobFromRequest(createdRequest, aiResult);
-    navigate(`/jobs/${newJob.jobId}`);
+    setDispatchError(null);
+    setIsDispatchingJob(true);
+    try {
+      let newJob;
+      if (isLoggedIn) {
+        newJob = await liveServiceJobService.createJobFromRequest(createdRequest, aiResult);
+      } else {
+        newJob = await serviceJobService.createJobFromRequest(createdRequest, aiResult);
+      }
+      navigate(`/jobs/${newJob.jobId}`);
+    } catch (err) {
+      setDispatchError(err.message || 'Failed to dispatch job. Please try again.');
+      setIsDispatchingJob(false);
+    }
   };
 
   const formSteps = [
@@ -339,6 +409,17 @@ export function CreateServiceRequestPage() {
               <div className="mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2" role="alert">
                 <span className="font-bold">⚠</span>
                 <span>{validationError}</span>
+              </div>
+            )}
+
+            {/* Submission/API Error Banner */}
+            {submissionError && (
+              <div className="mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2" role="alert">
+                <span className="font-bold mt-0.5">⚠</span>
+                <div>
+                  <div className="font-bold">Request submission failed</div>
+                  <div className="opacity-80">{submissionError}</div>
+                </div>
               </div>
             )}
 
@@ -558,9 +639,29 @@ export function CreateServiceRequestPage() {
                 <Button variant="ghost" size="sm" onClick={() => setAiResult(null)}>
                   ← Edit Request Inputs
                 </Button>
-                <Button variant="primary" size="sm" onClick={handleCreateServiceJob}>
-                  Approve & Dispatch Job →
-                </Button>
+                <div className="flex flex-col items-end gap-2">
+                  {dispatchError && (
+                    <div className="text-xs text-rose-600 dark:text-rose-400 font-medium text-right">
+                      ⚠ {dispatchError}
+                    </div>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleCreateServiceJob}
+                    disabled={isDispatchingJob}
+                  >
+                    {isDispatchingJob ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Dispatching Job…
+                      </span>
+                    ) : 'Approve & Dispatch Job →'}
+                  </Button>
+                </div>
               </div>
             </Card>
           </div>

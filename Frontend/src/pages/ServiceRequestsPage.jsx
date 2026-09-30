@@ -1,34 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
+import { Input } from '../components/ui/Input';
 import { Table, TableRow, TableCell } from '../components/ui/Table';
 import { StatusBadge, PriorityBadge, AIStatusBadge } from '../components/ui/Badge';
-import { serviceRequestService } from '../services/serviceRequestService';
 import { useRouter } from '../lib/router';
 import { LoadingSpinner, EmptyState } from '../components/ui/LoadingSpinner';
+import { useServiceRequests } from '../hooks/useServiceRequests';
 
 export function ServiceRequestsPage() {
   const { navigate } = useRouter();
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('All');
 
-  useEffect(() => {
-    async function fetchRequests() {
-      setLoading(true);
-      try {
-        const data = await serviceRequestService.getRequests();
-        setRequests(data);
-      } catch (err) {
-        console.error('Failed to load requests:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchRequests();
-  }, []);
+  // Live data via hook — authenticated = real API, unauthenticated = mock fallback
+  const { requests, isLoading: loading, error } = useServiceRequests();
 
   const matchesTab = (req, tab) => {
     const status = (req.status || '').toLowerCase();
@@ -110,6 +96,17 @@ export function ServiceRequestsPage() {
           </Button>
         </div>
       </Card>
+
+      {/* API Error Banner — shown only when an authenticated request failed */}
+      {error && (
+        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2" role="alert">
+          <span className="font-bold text-base">⚠</span>
+          <div>
+            <div className="font-bold">Could not load service requests from the server</div>
+            <div className="font-medium opacity-80">{error}</div>
+          </div>
+        </div>
+      )}
 
       {/* High Contrast Table matching Image 2 */}
       {loading ? (

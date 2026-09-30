@@ -181,6 +181,26 @@ export async function getValidAccessToken() {
 }
 
 /**
+ * Returns the current valid ID token, refreshing if needed.
+ * Returns null if not authenticated.
+ * @returns {Promise<string|null>}
+ */
+export async function getValidIdToken() {
+  const idToken = getStoredToken(TOKEN_KEYS.ID_TOKEN);
+  if (!idToken) return null;
+
+  if (!isTokenExpired()) return idToken;
+
+  try {
+    await refreshSession();
+    return getStoredToken(TOKEN_KEYS.ID_TOKEN);
+  } catch {
+    clearTokens();
+    return null;
+  }
+}
+
+/**
  * Returns the stored ID token without refreshing.
  * Prefer getValidAccessToken() for API calls.
  */

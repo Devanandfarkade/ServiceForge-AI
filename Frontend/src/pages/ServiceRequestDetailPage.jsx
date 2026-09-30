@@ -2,32 +2,90 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge, StatusBadge, PriorityBadge } from '../components/ui/Badge';
-import { serviceRequestService } from '../services/serviceRequestService';
-import { serviceJobService } from '../services/serviceJobService';
 import { useRouter } from '../lib/router';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { useAuth } from '../lib/AuthContext';
+import { liveServiceRequestService } from '../services/liveServiceRequestService';
+import { liveServiceJobService } from '../services/liveServiceJobService';
+import { serviceRequestService } from '../services/serviceRequestService'; // mock fallback
+import { serviceJobService } from '../services/serviceJobService'; // mock fallback
 
 export function ServiceRequestDetailPage({ id }) {
   const { navigate } = useRouter();
+  const { isLoggedIn } = useAuth();
   const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
+  const [jobError, setJobError] = useState(null);
 
   useEffect(() => {
     async function loadRequest() {
       if (!id) return;
-      const data = await serviceRequestService.getRequestById(id);
-      setRequest(data);
-      setLoading(false);
+      setLoading(true);
+      setError(null);
+      try {
+        let data;
+        if (isLoggedIn) {
+          data = await liveServiceRequestService.getRequestById(id);
+        } else {
+          data = await serviceRequestService.getRequestById(id);
+        }
+        setRequest(data);
+      } catch (err) {
+        // For authenticated users: show the real error, do NOT silently fall back to mock
+        if (isLoggedIn) {
+          setError(err.message || 'Failed to load service request.');
+        } else {
+          // Unauthenticated: try mock
+          try {
+            const fallback = await serviceRequestService.getRequestById(id);
+            setRequest(fallback);
+          } catch {
+            setError('Service request not found.');
+          }
+        }
+      } finally {
+        setLoading(false);
+      }
     }
     loadRequest();
-  }, [id]);
+  }, [id, isLoggedIn]);
 
   if (loading) return <LoadingSpinner label="Loading request details..." />;
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-4">
+        <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 text-sm flex items-start gap-3">
+          <span className="text-lg">⚠</span>
+          <div>
+            <div className="font-bold">Failed to load service request</div>
+            <div className="font-medium text-xs opacity-80 mt-1">{error}</div>
+          </div>
+        </div>
+        <Button variant="ghost" onClick={() => navigate('/requests')}>← Back to Requests</Button>
+      </div>
+    );
+  }
+
   if (!request) return <div className="text-slate-500 p-8 text-center font-bold">Service Request Not Found.</div>;
 
   const handleCreateJob = async () => {
-    const newJob = await serviceJobService.createJobFromRequest(request, request.aiAnalysis);
-    navigate(`/jobs/${newJob.jobId}`);
+    setJobError(null);
+    setIsCreatingJob(true);
+    try {
+      let newJob;
+      if (isLoggedIn) {
+        newJob = await liveServiceJobService.createJobFromRequest(request, request.aiAnalysis);
+      } else {
+        newJob = await serviceJobService.createJobFromRequest(request, request.aiAnalysis);
+      }
+      navigate(`/jobs/${newJob.jobId}`);
+    } catch (err) {
+      setJobError(err.message || 'Failed to create service job. Please try again.');
+      setIsCreatingJob(false);
+    }
   };
 
   return (
@@ -44,9 +102,31 @@ export function ServiceRequestDetailPage({ id }) {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="ghost" onClick={() => navigate('/requests')}>← Back to Requests</Button>
-          <Button variant="primary" onClick={handleCreateJob}>Approve & Create Job →</Button>
+          <Button
+            variant="primary"
+            onClick={handleCreateJob}
+            disabled={isCreatingJob}
+          >
+            {isCreatingJob ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Creating Job…
+              </span>
+            ) : 'Approve & Create Job →'}
+          </Button>
         </div>
       </div>
+
+      {/* Job creation error */}
+      {jobError && (
+        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2" role="alert">
+          <span className="font-bold">⚠</span>
+          <span>{jobError}</span>
+        </div>
+      )}
 
       {/* Side-by-Side View */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

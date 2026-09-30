@@ -1,39 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatusBadge, PriorityBadge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
-import { serviceRequestService } from '../services/serviceRequestService';
-import { serviceJobService } from '../services/serviceJobService';
-import { technicianService } from '../services/technicianService';
 import { useRouter } from '../lib/router';
+import { useAuth } from '../lib/AuthContext';
+import { useServiceRequests } from '../hooks/useServiceRequests';
+import { useServiceJobs } from '../hooks/useServiceJobs';
 
 export function DashboardPage() {
   const { navigate } = useRouter();
-  const [requests, setRequests] = useState([]);
-  const [jobs, setJobs] = useState([]);
-  const [technicians, setTechnicians] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  useEffect(() => {
-    async function loadDashboardData() {
-      try {
-        const [reqsData, jobsData, techsData] = await Promise.all([
-          serviceRequestService.getRequests(),
-          serviceJobService.getJobs(),
-          technicianService.getTechnicians()
-        ]);
-        setRequests(reqsData);
-        setJobs(jobsData);
-        setTechnicians(techsData);
-      } catch (err) {
-        console.error('Failed to load dashboard data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadDashboardData();
-  }, []);
+  const { requests, isLoading: reqLoading } = useServiceRequests();
+  const { jobs, isLoading: jobLoading } = useServiceJobs();
+
+  const loading = reqLoading || jobLoading;
+
+  // Derive first name from live user or fall back to "Marcus"
+  const firstName = user?.fullName?.split(' ')[0] || 'Marcus';
 
   const openRequestsCount = requests.filter(r => ['new', 'open', 'under review'].includes((r.status || '').toLowerCase())).length || 1;
   const inProgressJobsCount = jobs.filter(j => ['in_progress', 'assigned'].includes((j.status || '').toLowerCase())).length || 2;
@@ -59,7 +44,7 @@ export function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
         <div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-            Good morning, Marcus! <span className="text-xl">👋</span>
+            Good morning, {firstName}! <span className="text-xl">👋</span>
           </h1>
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
             Here's what's happening with your service operations today.

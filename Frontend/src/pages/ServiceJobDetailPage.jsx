@@ -4,61 +4,144 @@ import { Button } from '../components/ui/Button';
 import { StatusBadge, PriorityBadge } from '../components/ui/Badge';
 import { Tabs } from '../components/ui/Tabs';
 import { PDFReportModal } from '../components/ui/PDFReportModal';
-import { serviceJobService } from '../services/serviceJobService';
 import { useRouter } from '../lib/router';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { useAuth } from '../lib/AuthContext';
+import { liveServiceJobService } from '../services/liveServiceJobService';
+import { serviceJobService } from '../services/serviceJobService'; // mock fallback
 
 export function ServiceJobDetailPage({ id }) {
   const { navigate } = useRouter();
+  const { isLoggedIn } = useAuth();
+
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('checklist');
   const [safetyConfirmed, setSafetyConfirmed] = useState(true);
   const [newUpdateText, setNewUpdateText] = useState('');
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   useEffect(() => {
     async function loadJob() {
       if (!id) return;
+      setLoading(true);
+      setError(null);
       try {
-        const data = await serviceJobService.getJobById(id);
+        let data;
+        if (isLoggedIn) {
+          data = await liveServiceJobService.getJobById(id);
+        } else {
+          data = await serviceJobService.getJobById(id);
+        }
         setJob(data);
       } catch (err) {
-        console.error('Failed to load job:', err);
+        // For authenticated users: show the real error, do NOT silently fall back to mock
+        if (isLoggedIn) {
+          setError(err.message || 'Failed to load service job.');
+        } else {
+          try {
+            const fallback = await serviceJobService.getJobById(id);
+            setJob(fallback);
+          } catch {
+            setError('Service job not found.');
+          }
+        }
       } finally {
         setLoading(false);
       }
     }
     loadJob();
-  }, [id]);
+  }, [id, isLoggedIn]);
 
   if (loading) return <LoadingSpinner label="Loading service job details..." />;
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-4">
+        <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 text-sm flex items-start gap-3">
+          <span className="text-lg">⚠</span>
+          <div>
+            <div className="font-bold">Failed to load service job</div>
+            <div className="font-medium text-xs opacity-80 mt-1">{error}</div>
+          </div>
+        </div>
+        <Button variant="ghost" onClick={() => navigate('/jobs')}>← Back to Jobs</Button>
+      </div>
+    );
+  }
+
   if (!job) return <div className="p-8 text-center text-slate-500 font-semibold">Service Job Not Found</div>;
 
   const tabs = [
     { id: 'checklist', label: 'Inspection Checklist', count: job.confirmedChecklist?.length || 4 },
-    { id: 'updates', label: 'Field Updates', count: job.updates?.length || 2 },
+    { id: 'updates', label: 'Field Updates', count: job.updates?.length || 0 },
     { id: 'tools', label: 'Tools & Parts' },
     { id: 'report', label: 'Service Report' }
   ];
 
   const handleToggleStep = async (stepNumber) => {
-    const updated = await serviceJobService.toggleChecklistStep(job.jobId, stepNumber);
-    setJob(prev => ({ ...prev, confirmedChecklist: updated.confirmedChecklist }));
+    setActionError(null);
+    try {
+      let updated;
+      if (isLoggedIn) {
+        updated = await liveServiceJobService.toggleChecklistStep(job.jobId, stepNumber);
+      } else {
+        updated = await serviceJobService.toggleChecklistStep(job.jobId, stepNumber);
+      }
+      // API may return the full updated job or just the checklist — handle both
+      if (updated?.confirmedChecklist) {
+        setJob(prev => ({ ...prev, confirmedChecklist: updated.confirmedChecklist }));
+      } else if (updated?.jobId) {
+        setJob(updated);
+      } else {
+        // Optimistic update fallback
+        setJob(prev => ({
+          ...prev,
+          confirmedChecklist: prev.confirmedChecklist.map(item =>
+            item.stepNumber === stepNumber
+              ? { ...item, completed: !item.completed, completedAt: !item.completed ? new Date().toISOString() : null }
+              : item
+          )
+        }));
+      }
+    } catch (err) {
+      setActionError(err.message || 'Failed to update checklist step.');
+    }
   };
 
   const handleAddUpdate = async (e) => {
     e.preventDefault();
     if (!newUpdateText.trim()) return;
-    const upd = await serviceJobService.addJobUpdate(job.jobId, { notes: newUpdateText, updateType: 'NOTE' });
-    setJob(prev => ({ ...prev, updates: [...(prev.updates || []), upd] }));
-    setNewUpdateText('');
+    setActionError(null);
+    try {
+      let upd;
+      if (isLoggedIn) {
+        upd = await liveServiceJobService.addJobUpdate(job.jobId, { notes: newUpdateText, updateType: 'NOTE' });
+      } else {
+        upd = await serviceJobService.addJobUpdate(job.jobId, { notes: newUpdateText, updateType: 'NOTE' });
+      }
+      setJob(prev => ({ ...prev, updates: [...(prev.updates || []), upd] }));
+      setNewUpdateText('');
+    } catch (err) {
+      setActionError(err.message || 'Failed to save field update.');
+    }
   };
 
   const handleCompleteJob = async () => {
-    await serviceJobService.completeJob(job.jobId);
-    setJob(prev => ({ ...prev, status: 'COMPLETED' }));
-    setPdfModalOpen(true);
+    setActionError(null);
+    try {
+      if (isLoggedIn) {
+        await liveServiceJobService.completeJob(job.jobId);
+      } else {
+        await serviceJobService.completeJob(job.jobId);
+      }
+      setJob(prev => ({ ...prev, status: 'COMPLETED' }));
+      setPdfModalOpen(true);
+    } catch (err) {
+      setActionError(err.message || 'Failed to complete job.');
+    }
   };
 
   const completedCount = job.confirmedChecklist?.filter(c => c.completed).length || 0;
@@ -105,6 +188,15 @@ export function ServiceJobDetailPage({ id }) {
         </div>
       </div>
 
+      {/* Action Error Banner */}
+      {actionError && (
+        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2" role="alert">
+          <span className="font-bold">⚠</span>
+          <span>{actionError}</span>
+          <button className="ml-auto text-rose-400 hover:text-rose-600" onClick={() => setActionError(null)}>✕</button>
+        </div>
+      )}
+
       {/* Primary Customer & Asset Metadata Bar */}
       <Card className="p-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
@@ -122,7 +214,11 @@ export function ServiceJobDetailPage({ id }) {
           </div>
           <div>
             <span className="text-slate-500 block text-[10px] uppercase font-bold">SLA Target</span>
-            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">9:30 PM</span>
+            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+              {job.targetSlaDeadline
+                ? new Date(job.targetSlaDeadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '—'}
+            </span>
           </div>
         </div>
       </Card>
@@ -144,12 +240,12 @@ export function ServiceJobDetailPage({ id }) {
 
           <div className="space-y-3">
             {job.confirmedChecklist.map((step) => (
-              <Card 
-                key={step.stepNumber} 
+              <Card
+                key={step.stepNumber}
                 onClick={() => handleToggleStep(step.stepNumber)}
                 className={`p-4 cursor-pointer transition-all ${
-                  step.completed 
-                    ? 'border-emerald-200 bg-emerald-50/40 dark:bg-emerald-500/5 dark:border-emerald-500/30' 
+                  step.completed
+                    ? 'border-emerald-200 bg-emerald-50/40 dark:bg-emerald-500/5 dark:border-emerald-500/30'
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
@@ -165,9 +261,14 @@ export function ServiceJobDetailPage({ id }) {
                       {step.instruction}
                     </div>
                   </div>
-                  {step.completed && (
+                  {step.completed && step.completedAt && (
                     <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold shrink-0">
-                      Verified 5:15 PM
+                      {new Date(step.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  {step.completed && !step.completedAt && (
+                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold shrink-0">
+                      Verified
                     </span>
                   )}
                 </div>
@@ -184,7 +285,7 @@ export function ServiceJobDetailPage({ id }) {
               Confirm lockout/tagout procedure executed before beginning work on site. Verify zero electrical voltage across breaker Panel B-4.
             </p>
             <label className="pt-1 flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100 cursor-pointer">
-              <input 
+              <input
                 type="checkbox"
                 checked={safetyConfirmed}
                 onChange={(e) => setSafetyConfirmed(e.target.checked)}
@@ -201,20 +302,26 @@ export function ServiceJobDetailPage({ id }) {
         <Card className="space-y-4 p-5">
           <CardHeader><CardTitle>Field Progress Updates</CardTitle></CardHeader>
           <div className="space-y-3">
-            {job.updates.map((u, idx) => (
-              <div key={idx} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 text-xs space-y-1">
-                <div className="flex justify-between font-bold text-slate-900 dark:text-slate-100">
-                  <span>{u.author}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">{new Date(u.timestamp).toLocaleTimeString()}</span>
-                </div>
-                <p className="text-slate-600 dark:text-slate-300">{u.notes}</p>
+            {(job.updates || []).length === 0 ? (
+              <div className="text-xs text-slate-500 dark:text-slate-400 italic text-center py-4">
+                No field updates yet. Add the first note below.
               </div>
-            ))}
+            ) : (
+              (job.updates || []).map((u, idx) => (
+                <div key={idx} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 text-xs space-y-1">
+                  <div className="flex justify-between font-bold text-slate-900 dark:text-slate-100">
+                    <span>{u.technicianName || u.author || 'Technician'}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{new Date(u.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300">{u.notes}</p>
+                </div>
+              ))
+            )}
           </div>
           <form onSubmit={handleAddUpdate} className="flex gap-2">
-            <input 
-              type="text" 
-              placeholder="Log thermal readings, voltage test notes..." 
+            <input
+              type="text"
+              placeholder="Log thermal readings, voltage test notes..."
               value={newUpdateText}
               onChange={(e) => setNewUpdateText(e.target.value)}
               className="flex-1 bg-slate-50 border border-slate-200 dark:bg-slate-950 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs"
@@ -230,21 +337,27 @@ export function ServiceJobDetailPage({ id }) {
           <Card>
             <CardHeader><CardTitle>Required Tools</CardTitle></CardHeader>
             <div className="flex flex-wrap gap-2">
-              {job.requiredTools.map((t, idx) => (
+              {(job.requiredTools || []).map((t, idx) => (
                 <span key={idx} className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700">
                   🔧 {t}
                 </span>
               ))}
+              {!(job.requiredTools?.length) && (
+                <span className="text-xs text-slate-400 italic">No tools specified.</span>
+              )}
             </div>
           </Card>
           <Card>
             <CardHeader><CardTitle>Required Parts</CardTitle></CardHeader>
             <div className="flex flex-wrap gap-2">
-              {job.requiredParts.map((p, idx) => (
+              {(job.requiredParts || []).map((p, idx) => (
                 <span key={idx} className="px-3 py-1 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-200 dark:border-blue-500/30">
-                  📦 {p.partName} ({p.quantity}x)
+                  📦 {p.partName} {p.quantity ? `(${p.quantity}x)` : ''}
                 </span>
               ))}
+              {!(job.requiredParts?.length) && (
+                <span className="text-xs text-slate-400 italic">No parts specified.</span>
+              )}
             </div>
           </Card>
         </div>
