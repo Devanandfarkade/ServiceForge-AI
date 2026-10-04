@@ -11,6 +11,7 @@ import base64
 import boto3
 from botocore.exceptions import ClientError
 from shared.config import Config
+from shared.errors import ServiceForgeError
 from shared.logging_utils import logger
 
 SYSTEM_PROMPT = """You are an expert industrial field service operations assistant working for ServiceForge AI.
@@ -65,7 +66,7 @@ class BedrockClient:
             else:
                 self.use_mock = True
         except Exception as e:
-            logger.warning(f"Could not connect to live Bedrock runtime ({e}). Will use fallback synthesis if invoked.")
+            logger.warning(f"Could not connect to live Bedrock runtime ({e}). Will use mock synthesis if invoked locally.")
             self.use_mock = True
 
     def analyze_service_request(self, request_data: dict, attachments: list = None, customer_data: dict = None, asset_data: dict = None) -> dict:
@@ -175,9 +176,9 @@ Description:
                     except Exception as pdf_err:
                         logger.warning(f"Failed to parse PDF attachment '{file_name}': {pdf_err}")
 
-        # If live client is not available (mock mode / local dev), return realistic structured synthesis
+        # If running in local mock mode, return local synthesis
         if self.use_mock or not self.client:
-            logger.info("Bedrock Runtime client not available in local environment. Synthesizing structured AI decision support.")
+            logger.info("Bedrock Runtime client not configured in local environment. Synthesizing mock structured AI output.")
             return self._generate_fallback_synthesis(request_data, attachments, time.time() - start_time)
 
         # Attempt Bedrock invocation with primary model
@@ -187,18 +188,27 @@ Description:
             ai_dict["executionLatencyMs"] = int(latency * 1000)
             ai_dict["bedrockModelId"] = model_to_use
             return ai_dict
-        except Exception as e:
-            logger.warning(f"Primary Bedrock model '{model_to_use}' failed: {e}. Attempting fallback model '{self.fallback_model_id}'.")
+        except Exception as primary_err:
+            logger.warning(f"Primary Bedrock model '{model_to_use}' failed: {primary_err}. Attempting fallback model '{self.fallback_model_id}'.")
             try:
                 ai_dict, latency = self._invoke_claude(self.fallback_model_id, user_content_blocks)
                 ai_dict["executionLatencyMs"] = int(latency * 1000)
                 ai_dict["bedrockModelId"] = self.fallback_model_id
                 return ai_dict
             except Exception as fb_err:
-                logger.error(f"Fallback Bedrock model also failed: {fb_err}. Returning fallback synthesis.")
-                return self._generate_fallback_synthesis(request_data, attachments, time.time() - start_time)
+                logger.error(f"Fallback Bedrock model '{self.fallback_model_id}' also failed: {fb_err}.")
+                if self.use_mock:
+                    return self._generate_fallback_synthesis(request_data, attachments, time.time() - start_time)
+                raise ServiceForgeError(
+                    f"Amazon Bedrock AI analysis failed: {fb_err}",
+                    status_code=502,
+                    code="BEDROCK_SERVICE_ERROR"
+                )
 
     def _invoke_claude(self, model_id: str, content_blocks: list) -> tuple:
+        """
+        Invokes Claude model on Bedrock. Performs 1x controlled JSON format retry if output is invalid JSON.
+        """
         start = time.time()
         payload = {
             "anthropic_version": "bedrock-2023-05-31",
@@ -221,16 +231,63 @@ Description:
             body=json.dumps(payload)
         )
 
-        latency = time.time() - start
         response_body = json.loads(response["body"].read().decode("utf-8"))
-        
         raw_text = ""
         for block in response_body.get("content", []):
             if block.get("type") == "text":
                 raw_text += block.get("text", "")
 
-        ai_dict = self._clean_and_parse_json(raw_text)
-        return self._validate_and_normalize_schema(ai_dict), latency
+        try:
+            ai_dict = self._clean_and_parse_json(raw_text)
+            latency = time.time() - start
+            return self._validate_and_normalize_schema(ai_dict), latency
+        except Exception as first_parse_err:
+            logger.warning(f"Bedrock model '{model_id}' output was invalid JSON ({first_parse_err}). Executing 1x controlled JSON format retry.")
+            
+            # Controlled 1x JSON format retry
+            retry_payload = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 2500,
+                "temperature": 0.1,
+                "top_p": 0.9,
+                "system": SYSTEM_PROMPT,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": content_blocks
+                    },
+                    {
+                        "role": "assistant",
+                        "content": raw_text
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Your previous output was not valid JSON. Please re-format the analysis output as strictly valid JSON matching the specified schema. Return ONLY valid JSON with no conversational text or markdown code fences."
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            retry_response = self.client.invoke_model(
+                modelId=model_id,
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps(retry_payload)
+            )
+
+            retry_body = json.loads(retry_response["body"].read().decode("utf-8"))
+            retry_text = ""
+            for block in retry_body.get("content", []):
+                if block.get("type") == "text":
+                    retry_text += block.get("text", "")
+
+            ai_dict = self._clean_and_parse_json(retry_text)
+            latency = time.time() - start
+            return self._validate_and_normalize_schema(ai_dict), latency
 
     def _clean_and_parse_json(self, text: str) -> dict:
         """

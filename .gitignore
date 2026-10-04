@@ -1,0 +1,17 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# AWS SAM Build artifacts
+.aws-sam/
+
+# Environment files
+.env
+*.log
+
+# Node dependencies & builds
+node_modules/
+dist/
+.vite/

@@ -110,3 +110,48 @@ def test_ai_analyze_real_bedrock_integration():
     assert ai_audit["requestId"] == "req-9988-test"
     assert ai_audit["reviewStatus"] == "PENDING_REVIEW"
 
+def test_ai_analyze_failure_does_not_update_status_to_pending_review():
+    from shared.dynamodb import db_client
+    from shared.models import build_service_request_item
+    from shared.bedrock import bedrock_client
+    from unittest.mock import MagicMock
+
+    req_item = build_service_request_item(
+        org_id="org-8841-alpha",
+        user_id="user-manager-001",
+        description="Pneumatic leak in assembly line 4.",
+        description_source="typed",
+        request_id="req-fail-status-check"
+    )
+    db_client.put_item(req_item)
+
+    mock_client = MagicMock()
+    mock_client.invoke_model.side_effect = Exception("ServiceUnavailableException")
+
+    orig_client = bedrock_client.client
+    orig_use_mock = bedrock_client.use_mock
+
+    bedrock_client.client = mock_client
+    bedrock_client.use_mock = False
+
+    event = {
+        **MOCK_EVENT_CONTEXT,
+        "httpMethod": "POST",
+        "path": "/service-requests/req-fail-status-check/analyze",
+        "pathParameters": {"id": "req-fail-status-check"}
+    }
+
+    resp = lambda_handler(event, None)
+    assert resp["statusCode"] == 502
+    body = json.loads(resp["body"])
+    assert body["success"] is False
+    assert body["error"]["code"] == "BEDROCK_SERVICE_ERROR"
+
+    # Status must NOT be PENDING_REVIEW
+    current_req = db_client.get_item("ORG#org-8841-alpha", "REQ#req-fail-status-check")
+    assert current_req["status"] == "SUBMITTED"
+
+    bedrock_client.client = orig_client
+    bedrock_client.use_mock = orig_use_mock
+
+

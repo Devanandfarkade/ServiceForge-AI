@@ -5,11 +5,14 @@ ServiceForge AI — Unit Tests: Bedrock Helper & Schema Validation
 import sys
 import os
 import json
+import io
 import pytest
+from unittest.mock import MagicMock
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from shared.bedrock import bedrock_client
+from shared.errors import ServiceForgeError
 
 def test_clean_and_parse_json_markdown_fences():
     raw_markdown = """```json
@@ -41,6 +44,58 @@ def test_validate_and_normalize_schema_defaults():
     assert normalized["suggestedInspectionSteps"][0]["instruction"] == "Check pressure levels"
     assert normalized["suggestedInspectionSteps"][0]["stepNumber"] == 1
     assert normalized["humanReviewRequired"] is True
+
+def test_invoke_claude_controlled_json_retry():
+    mock_client = MagicMock()
+    
+    # 1st call returns invalid non-JSON text; 2nd call returns valid JSON text
+    first_resp = {
+        "body": io.BytesIO(json.dumps({
+            "content": [{"type": "text", "text": "Output text without valid JSON structure."}]
+        }).encode("utf-8"))
+    }
+    
+    second_resp = {
+        "body": io.BytesIO(json.dumps({
+            "content": [{"type": "text", "text": json.dumps({
+                "summary": "Boiler thermal overload trip",
+                "detectedAssetCategory": "BOILER",
+                "recommendedPriority": "CRITICAL"
+            })}]
+        }).encode("utf-8"))
+    }
+    
+    mock_client.invoke_model.side_effect = [first_resp, second_resp]
+
+    original_client = bedrock_client.client
+    bedrock_client.client = mock_client
+
+    result, latency = bedrock_client._invoke_claude("anthropic.claude-3-5-sonnet-20241022-v2:0", [{"type": "text", "text": "Test prompt"}])
+
+    assert mock_client.invoke_model.call_count == 2
+    assert result["detectedAssetCategory"] == "BOILER"
+    assert result["recommendedPriority"] == "CRITICAL"
+    bedrock_client.client = original_client
+
+def test_bedrock_failure_raises_controlled_error_in_live_mode():
+    mock_client = MagicMock()
+    mock_client.invoke_model.side_effect = Exception("Bedrock ThrottlingException")
+
+    original_client = bedrock_client.client
+    original_use_mock = bedrock_client.use_mock
+
+    bedrock_client.client = mock_client
+    bedrock_client.use_mock = False  # Simulate live AWS environment
+
+    with pytest.raises(ServiceForgeError) as exc_info:
+        bedrock_client.analyze_service_request({"requestId": "req-fail-test", "description": "Test issue"})
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.code == "BEDROCK_SERVICE_ERROR"
+    assert "Bedrock ThrottlingException" in str(exc_info.value)
+
+    bedrock_client.client = original_client
+    bedrock_client.use_mock = original_use_mock
 
 def test_analyze_service_request_fallback():
     req_data = {
