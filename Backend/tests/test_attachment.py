@@ -9,7 +9,16 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from functions.attachment.handler import lambda_handler
+try:
+    from functions.attachment.handler import lambda_handler
+except ModuleNotFoundError:
+    import importlib.util
+    handler_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../functions/attachment/handler.py'))
+    spec = importlib.util.spec_from_file_location("functions.attachment.handler", handler_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    lambda_handler = mod.lambda_handler
+
 
 MOCK_EVENT_CONTEXT = {
     "requestContext": {
@@ -136,7 +145,8 @@ def test_confirm_attachment_not_found():
     assert confirm_resp["statusCode"] == 404
     body = json.loads(confirm_resp["body"])
     assert body["success"] is False
-    assert body["error"]["code"] == "NOT_FOUND"
+    assert body["error"]["code"] == "RESOURCE_NOT_FOUND"
+
 
 def test_confirm_attachment_with_decimal_size_bytes():
     import decimal

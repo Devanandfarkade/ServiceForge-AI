@@ -9,8 +9,23 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from functions.technician.handler import lambda_handler as tech_handler
-from functions.report.handler import lambda_handler as report_handler
+try:
+    from functions.technician.handler import lambda_handler as tech_handler
+    from functions.report.handler import lambda_handler as report_handler
+except ModuleNotFoundError:
+    import importlib.util
+    tech_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../functions/technician/handler.py'))
+    spec_tech = importlib.util.spec_from_file_location("functions.technician.handler", tech_path)
+    mod_tech = importlib.util.module_from_spec(spec_tech)
+    spec_tech.loader.exec_module(mod_tech)
+    tech_handler = mod_tech.lambda_handler
+
+    report_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../functions/report/handler.py'))
+    spec_rep = importlib.util.spec_from_file_location("functions.report.handler", report_path)
+    mod_rep = importlib.util.module_from_spec(spec_rep)
+    spec_rep.loader.exec_module(mod_rep)
+    report_handler = mod_rep.lambda_handler
+
 from shared.dynamodb import db_client
 from shared.models import build_service_job_item
 

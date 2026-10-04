@@ -96,4 +96,17 @@ class S3Client:
             logger.warning(f"S3 head_object warning for key '{object_key}': {e}")
             return True
 
+    def get_object_bytes(self, object_key: str) -> bytes:
+        """
+        Retrieves raw object bytes directly from S3 bucket for internal processing (e.g. Bedrock analysis).
+        """
+        if self.use_mock:
+            return b""
+        try:
+            response = self.client.get_object(Bucket=self.bucket_name, Key=object_key)
+            return response["Body"].read()
+        except ClientError as e:
+            logger.error(f"Error fetching object bytes for {object_key}: {e}")
+            raise
+
 s3_client = S3Client()

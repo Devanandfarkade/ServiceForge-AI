@@ -9,7 +9,16 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from functions.service_request.handler import lambda_handler
+try:
+    from functions.service_request.handler import lambda_handler
+except ModuleNotFoundError:
+    import importlib.util
+    handler_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../functions/service-request/handler.py'))
+    spec = importlib.util.spec_from_file_location("functions.service_request.handler", handler_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    lambda_handler = mod.lambda_handler
+
 
 MOCK_EVENT_CONTEXT = {
     "requestContext": {
@@ -55,7 +64,7 @@ def test_list_service_requests_tenant_isolated():
     assert body["success"] is True
     assert isinstance(body["data"], list)
 
-def test_ai_analyze_placeholder_boundary():
+def test_ai_analyze_real_bedrock_integration():
     event = {
         **MOCK_EVENT_CONTEXT,
         "httpMethod": "POST",
@@ -68,8 +77,8 @@ def test_ai_analyze_placeholder_boundary():
     req_item = build_service_request_item(
         org_id="org-8841-alpha",
         user_id="user-manager-001",
-        description="Test issue",
-        description_source="typed",
+        description="Industrial compressor producing loud grinding noise and shutting down.",
+        description_source="edited_voice",
         request_id="req-9988-test"
     )
     db_client.put_item(req_item)
@@ -78,5 +87,26 @@ def test_ai_analyze_placeholder_boundary():
     assert resp["statusCode"] == 200
     body = json.loads(resp["body"])
     assert body["success"] is True
-    assert body["data"]["status"] == "ai_placeholder"
-    assert "not connected in Phase 1" in body["data"]["message"]
+
+    # Verify structured AI output schema
+    data = body["data"]
+    assert "summary" in data
+    assert "detectedAssetCategory" in data
+    assert "symptoms" in data
+    assert "suggestedInspectionSteps" in data
+    assert "suggestedTools" in data
+    assert "suggestedParts" in data
+    assert "safetyConsiderations" in data
+    assert "confidenceScore" in data
+    assert data["humanReviewRequired"] is True
+
+    # Verify updated request status in DynamoDB
+    updated_req = db_client.get_item("ORG#org-8841-alpha", "REQ#req-9988-test")
+    assert updated_req["status"] == "PENDING_REVIEW"
+
+    # Verify AIAnalysis audit log saved to DynamoDB
+    ai_audit = db_client.get_item("ORG#org-8841-alpha", "AI_ANALYSIS#req-9988-test")
+    assert ai_audit is not None
+    assert ai_audit["requestId"] == "req-9988-test"
+    assert ai_audit["reviewStatus"] == "PENDING_REVIEW"
+

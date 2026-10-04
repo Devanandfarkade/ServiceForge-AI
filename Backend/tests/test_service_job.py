@@ -9,7 +9,16 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from functions.service_job.handler import lambda_handler
+try:
+    from functions.service_job.handler import lambda_handler
+except ModuleNotFoundError:
+    import importlib.util
+    handler_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../functions/service-job/handler.py'))
+    spec = importlib.util.spec_from_file_location("functions.service_job.handler", handler_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    lambda_handler = mod.lambda_handler
+
 
 MOCK_EVENT_CONTEXT = {
     "requestContext": {

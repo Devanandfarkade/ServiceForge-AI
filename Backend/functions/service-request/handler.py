@@ -11,12 +11,14 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from shared.auth import extract_user_context, require_role, verify_tenant_access
+from shared.bedrock import bedrock_client
 from shared.config import Config
 from shared.dynamodb import db_client
 from shared.errors import NotFoundError, ServiceForgeError
 from shared.logging_utils import logger
-from shared.models import build_service_request_item, clean_dynamodb_keys
+from shared.models import build_ai_analysis_item, build_service_request_item, clean_dynamodb_keys
 from shared.responses import build_error_response, build_success_response, extract_request_id, handle_exception
+from shared.s3 import s3_client
 from shared.validation import validate_service_request_input
 
 def lambda_handler(event: dict, context) -> dict:
@@ -116,13 +118,20 @@ def lambda_handler(event: dict, context) -> dict:
                 raise NotFoundError(f"Service request '{req_id_param}' not found in user organization.")
 
             verify_tenant_access(user_ctx, item["organizationId"])
-            return build_success_response(clean_dynamodb_keys(item), 200, request_id)
+
+            ai_item = db_client.get_item(pk, f"AI_ANALYSIS#{req_id_param}")
+            cleaned_req = clean_dynamodb_keys(item)
+            if ai_item:
+                cleaned_req["aiAnalysis"] = clean_dynamodb_keys(ai_item)
+                cleaned_req["hasAiAnalysis"] = True
+
+            return build_success_response(cleaned_req, 200, request_id)
 
         # ----------------------------------------------------------------------
-        # 4. POST /service-requests/{id}/analyze — AI Integration Placeholder
+        # 4. POST /service-requests/{id}/analyze — Real Amazon Bedrock AI Triage
         # ----------------------------------------------------------------------
         elif http_method == "POST" and path.endswith("/analyze"):
-            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER"])
+            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER", "CUSTOMER"])
 
             target_id = req_id_param or path.split("/")[-2]
             pk = f"ORG#{org_id}"
@@ -134,13 +143,61 @@ def lambda_handler(event: dict, context) -> dict:
 
             verify_tenant_access(user_ctx, item["organizationId"])
 
-            # PHASE 1 BOUNDARY: Do NOT invoke Bedrock. Return integration placeholder.
-            return build_success_response({
-                "status": "ai_placeholder",
-                "message": "AI analysis (Amazon Bedrock) is not connected in Phase 1.",
-                "requestId": target_id,
-                "note": "Frontend may continue using client-side mock AI output until Phase 2 integration."
-            }, 200, request_id)
+            # 1. Fetch attachment metadata & binary bytes if attachments exist
+            attachment_items = []
+            att_ids = item.get("attachments", [])
+            if att_ids:
+                all_atts = db_client.query(pk=pk, sk_prefix="ATTACHMENT#")
+                for att in all_atts:
+                    a_id = att.get("attachmentId")
+                    e_id = att.get("entityId")
+                    if (a_id in att_ids or e_id == target_id) and att.get("s3ObjectKey"):
+                        att_dict = dict(att)
+                        try:
+                            att_dict["bytes"] = s3_client.get_object_bytes(att["s3ObjectKey"])
+                        except Exception as err:
+                            logger.warning(f"Could not retrieve bytes for attachment '{a_id}' key '{att.get('s3ObjectKey')}': {err}")
+                            att_dict["bytes"] = None
+                        attachment_items.append(att_dict)
+
+            # 2. Fetch customer and asset metadata if available
+            customer_data = None
+            if item.get("customerId"):
+                customer_data = db_client.get_item(pk, f"CUSTOMER#{item['customerId']}")
+
+            asset_data = None
+            if item.get("assetId"):
+                asset_data = db_client.get_item(pk, f"ASSET#{item['assetId']}")
+
+            # 3. Invoke Bedrock multimodal analysis
+            ai_result = bedrock_client.analyze_service_request(
+                request_data=item,
+                attachments=attachment_items,
+                customer_data=customer_data,
+                asset_data=asset_data
+            )
+
+            # 4. Store AIAnalysis audit record in DynamoDB (SK = AI_ANALYSIS#{requestId})
+            ai_analysis_item = build_ai_analysis_item(
+                org_id=org_id,
+                request_id=target_id,
+                ai_result=ai_result,
+                model_id=ai_result.get("bedrockModelId")
+            )
+            db_client.put_item(ai_analysis_item)
+
+            # 5. Update ServiceRequest status to PENDING_REVIEW in DynamoDB
+            rec_prio = ai_result.get("recommendedPriority", item.get("priority", "HIGH"))
+            db_client.update_item(pk, sk, {
+                "status": "PENDING_REVIEW",
+                "priority": rec_prio,
+                "GSI1PK": f"ORG#{org_id}#STATUS#PENDING_REVIEW",
+                "GSI2PK": f"ORG#{org_id}#PRIORITY#{rec_prio}"
+            })
+
+            cleaned_result = clean_dynamodb_keys(ai_result)
+            return build_success_response(cleaned_result, 200, request_id)
+
 
         # ----------------------------------------------------------------------
         # 5. PATCH /service-requests/{id} — Status Update / Approval

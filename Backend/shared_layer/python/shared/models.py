@@ -139,6 +139,42 @@ def build_job_update_item(org_id: str, job_id: str, technician_id: str, update_t
     }
     return item
 
+def build_ai_analysis_item(org_id: str, request_id: str, ai_result: dict, model_id: str = None) -> dict:
+    analysis_id = f"analysis-{str(uuid.uuid4())[:8]}"
+    ts = now_iso()
+    m_id = model_id or "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    item = {
+        "PK": f"ORG#{org_id}",
+        "SK": f"AI_ANALYSIS#{request_id}",
+        "GSI1PK": f"ORG#{org_id}#AI_STATUS#PENDING_REVIEW",
+        "GSI1SK": f"CREATED#{ts}",
+        "organizationId": org_id,
+        "analysisId": analysis_id,
+        "requestId": request_id,
+        "bedrockModelId": m_id,
+        "promptVersion": "v2.0",
+        "summary": ai_result.get("summary", ""),
+        "detectedAssetCategory": ai_result.get("detectedAssetCategory", "OTHER"),
+        "extractedAssetDetails": ai_result.get("extractedAssetDetails", {}),
+        "symptoms": ai_result.get("symptoms", []),
+        "evidenceFindings": ai_result.get("evidenceFindings", []),
+        "recommendedPriority": ai_result.get("recommendedPriority", "HIGH"),
+        "recommendedSkillProfile": ai_result.get("recommendedSkillProfile", ""),
+        "suggestedInspectionSteps": ai_result.get("suggestedInspectionSteps", []),
+        "suggestedTools": ai_result.get("suggestedTools", []),
+        "suggestedParts": ai_result.get("suggestedParts", []),
+        "safetyConsiderations": ai_result.get("safetyConsiderations", []),
+        "missingInformation": ai_result.get("missingInformation", []),
+        "confidenceScore": ai_result.get("confidenceScore", 0.90),
+        "humanReviewRequired": ai_result.get("humanReviewRequired", True),
+        "reviewStatus": "PENDING_REVIEW",
+        "executionLatencyMs": ai_result.get("executionLatencyMs", 0),
+        "createdAt": ts,
+        "updatedAt": ts
+    }
+    return item
+
 import decimal
 
 def convert_decimals(obj):
@@ -162,3 +198,4 @@ def clean_dynamodb_keys(item: dict) -> dict:
     for key in ["PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK"]:
         cleaned.pop(key, None)
     return convert_decimals(cleaned)
+
