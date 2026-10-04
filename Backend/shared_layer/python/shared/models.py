@@ -139,13 +139,26 @@ def build_job_update_item(org_id: str, job_id: str, technician_id: str, update_t
     }
     return item
 
+import decimal
+
+def convert_decimals(obj):
+    if isinstance(obj, list):
+        return [convert_decimals(i) for i in obj]
+    elif isinstance(obj, dict):
+        return {k: convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, decimal.Decimal):
+        if obj % 1 == 0:
+            return int(obj)
+        return float(obj)
+    return obj
+
 def clean_dynamodb_keys(item: dict) -> dict:
     """
-    Removes DynamoDB partition/sort key overhead (PK, SK, GSI1PK, etc.) before returning JSON responses.
+    Removes DynamoDB partition/sort key overhead (PK, SK, GSI1PK, etc.) and converts Decimal types before returning JSON responses.
     """
     if not isinstance(item, dict):
         return item
     cleaned = dict(item)
     for key in ["PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK"]:
         cleaned.pop(key, None)
-    return cleaned
+    return convert_decimals(cleaned)

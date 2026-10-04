@@ -46,6 +46,22 @@ export const liveServiceRequestService = {
   },
 
   /**
+   * Update an existing service request (e.g. associate confirmed attachment IDs).
+   * @param {string} id - Service request ID
+   * @param {object} updates - Fields to update (e.g. { attachments: [...] })
+   */
+  updateRequest: async (id, updates) => {
+    return apiClient.patch(`/service-requests/${id}`, updates);
+  },
+
+  /**
+   * Alias for updateRequest.
+   */
+  patchRequest: async (id, updates) => {
+    return apiClient.patch(`/service-requests/${id}`, updates);
+  },
+
+  /**
    * Trigger AI analysis for a service request.
    * @param {string} requestId
    */

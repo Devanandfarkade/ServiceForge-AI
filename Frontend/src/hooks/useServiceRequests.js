@@ -50,11 +50,14 @@ export function useServiceRequests(filters = {}) {
           return;
         }
         setError(err.message || 'Failed to load service requests.');
-        // Fallback: show mock data so page is not blank
-        try {
-          const fallback = await serviceRequestService.getRequests(filters);
-          setRequests(Array.isArray(fallback) ? fallback : []);
-        } catch {
+        if (!isLoggedIn) {
+          try {
+            const fallback = await serviceRequestService.getRequests(filters);
+            setRequests(Array.isArray(fallback) ? fallback : []);
+          } catch {
+            setRequests([]);
+          }
+        } else {
           setRequests([]);
         }
       }
@@ -101,11 +104,14 @@ export function useServiceRequest(id) {
       setRequest(data);
     } catch (err) {
       setError(err.message || 'Failed to load service request.');
-      // Fallback to mock
-      try {
-        const fallback = await serviceRequestService.getRequestById(id);
-        setRequest(fallback);
-      } catch {
+      if (!isLoggedIn) {
+        try {
+          const fallback = await serviceRequestService.getRequestById(id);
+          setRequest(fallback);
+        } catch {
+          setRequest(null);
+        }
+      } else {
         setRequest(null);
       }
     } finally {

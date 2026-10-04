@@ -34,9 +34,10 @@ class S3Client:
         att = attachment_id or "file"
         return f"attachments/orgs/{org_id}/requests/{req}/{att}/{filename}"
 
-    def generate_presigned_put_url(self, object_key: str, content_type: str, expires_in: int = Config.PRESIGNED_URL_EXPIRATION_SECONDS) -> str:
+    def generate_presigned_put_url(self, object_key: str, content_type: str = None, expires_in: int = Config.PRESIGNED_URL_EXPIRATION_SECONDS) -> str:
         """
         Generates a 15-minute S3 presigned PUT URL for direct client binary uploads.
+        Note: ContentType is omitted from Params to prevent header-signing mismatch (403 Forbidden) errors in browser uploads.
         """
         if self.use_mock:
             return f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{object_key}?mock-presigned=true&expires={expires_in}"
@@ -46,8 +47,7 @@ class S3Client:
                 ClientMethod="put_object",
                 Params={
                     "Bucket": self.bucket_name,
-                    "Key": object_key,
-                    "ContentType": content_type
+                    "Key": object_key
                 },
                 ExpiresIn=expires_in
             )
@@ -56,7 +56,7 @@ class S3Client:
             logger.error(f"Error generating presigned PUT URL for {object_key}: {e}")
             raise
 
-    def generate_presigned_get_url(self, object_key: str, expires_in: int = Config.PRESIGNED_URL_EXPIRATION_SECONDS) -> str:
+    def generate_presigned_get_url(self, object_key: str, expires_in: int = Config.PRESIGNED_URL_EXPIRATION_SECONDS, content_type: str = None) -> str:
         """
         Generates a 15-minute S3 presigned GET URL for secure attachment download.
         """
@@ -64,17 +64,36 @@ class S3Client:
             return f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{object_key}?mock-download=true&expires={expires_in}"
 
         try:
+            params = {
+                "Bucket": self.bucket_name,
+                "Key": object_key
+            }
+            if content_type:
+                params["ResponseContentType"] = content_type
             url = self.client.generate_presigned_url(
                 ClientMethod="get_object",
-                Params={
-                    "Bucket": self.bucket_name,
-                    "Key": object_key
-                },
+                Params=params,
                 ExpiresIn=expires_in
             )
             return url
         except ClientError as e:
             logger.error(f"Error generating presigned GET URL for {object_key}: {e}")
             raise
+
+    def check_object_exists(self, object_key: str) -> bool:
+        """
+        Checks whether an object exists in the S3 bucket using head_object.
+        """
+        if self.use_mock:
+            return True
+        try:
+            self.client.head_object(Bucket=self.bucket_name, Key=object_key)
+            return True
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ["404", "NoSuchKey", "NotFound"]:
+                return False
+            logger.warning(f"S3 head_object warning for key '{object_key}': {e}")
+            return True
 
 s3_client = S3Client()

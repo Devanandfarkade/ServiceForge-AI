@@ -24,6 +24,16 @@ def extract_request_id(event: dict) -> str:
         return request_context.get("requestId") or str(uuid.uuid4())
     return str(uuid.uuid4())
 
+import decimal
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, decimal.Decimal):
+            if obj % 1 == 0:
+                return int(obj)
+            return float(obj)
+        return super().default(obj)
+
 def build_success_response(data: dict | list | str, status_code: int = 200, request_id: str = None) -> dict:
     req_id = request_id or str(uuid.uuid4())
     body = {
@@ -39,13 +49,17 @@ def build_success_response(data: dict | list | str, status_code: int = 200, requ
     return {
         "statusCode": status_code,
         "headers": COMMON_HEADERS,
-        "body": json.dumps(body)
+        "body": json.dumps(body, cls=DecimalEncoder)
     }
 
 def build_error_response(status_code: int, message: str, code: str = "INTERNAL_ERROR", details: list = None, request_id: str = None, error_details: Exception = None) -> dict:
     req_id = request_id or str(uuid.uuid4())
     if error_details:
-        logger.error(f"[ERROR] {status_code} {code} - {message}", request_id=req_id, extra_data={"details": str(error_details)})
+        logger.error(
+            f"[ERROR] {status_code} {code} - {message} ({type(error_details).__name__}: {error_details})",
+            request_id=req_id,
+            extra_data={"error_type": type(error_details).__name__, "details": str(error_details)}
+        )
     else:
         logger.warning(f"[WARNING] {status_code} {code} - {message}", request_id=req_id)
 
@@ -66,7 +80,7 @@ def build_error_response(status_code: int, message: str, code: str = "INTERNAL_E
     return {
         "statusCode": status_code,
         "headers": COMMON_HEADERS,
-        "body": json.dumps(body)
+        "body": json.dumps(body, cls=DecimalEncoder)
     }
 
 def handle_exception(exc: Exception, request_id: str = None) -> dict:
@@ -78,6 +92,8 @@ def handle_exception(exc: Exception, request_id: str = None) -> dict:
             details=exc.details,
             request_id=request_id
         )
+    
+    logger.error(f"Unhandled Exception [{type(exc).__name__}]: {exc}", request_id=request_id)
     return build_error_response(
         status_code=500,
         message="An unexpected internal server error occurred.",

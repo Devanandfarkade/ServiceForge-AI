@@ -20,28 +20,35 @@ export const liveAttachmentService = {
   ...attachmentService, // retain all validation, formatting, and model helpers
 
   /**
-   * Upload a single attachment to S3 via a presigned URL.
+   * Upload a single attachment to S3 via a presigned URL and confirm completion.
    * @param {Object} attachmentModel - Created via attachmentService.createAttachmentModel()
    * @param {string} requestId - Parent service request ID (used as S3 prefix)
-   * @returns {Promise<{ s3Key: string, fileName: string, contentType: string, sizeBytes: number }>}
+   * @returns {Promise<{ attachmentId: string, s3ObjectKey: string, fileName: string, contentType: string, sizeBytes: number }>}
    */
   uploadAttachment: async (attachmentModel, requestId) => {
     // Step 1: Request presigned URL from backend
     const presignData = await apiClient.post('/attachments/presign', {
-      requestId,
+      serviceRequestId: requestId,
       fileName: attachmentModel.fileName,
       contentType: attachmentModel.contentType,
       sizeBytes: attachmentModel.sizeBytes,
     });
 
-    const { presignedUrl, s3Key } = presignData;
+    const { attachmentId, uploadUrl, s3ObjectKey } = presignData;
 
     // Step 2: Upload directly to S3
-    await apiClient.uploadToS3(presignedUrl, attachmentModel.file, attachmentModel.contentType);
+    await apiClient.uploadToS3(uploadUrl, attachmentModel.file, attachmentModel.contentType);
 
-    // Step 3: Return metadata for the service request payload
+    // Step 3: Confirm upload completion with backend
+    await apiClient.post(`/attachments/${attachmentId}/confirm`, {
+      s3ObjectKey,
+      requestId,
+    });
+
+    // Step 4: Return metadata for the service request payload
     return {
-      s3Key,
+      attachmentId,
+      s3ObjectKey,
       fileName: attachmentModel.fileName,
       contentType: attachmentModel.contentType,
       sizeBytes: attachmentModel.sizeBytes,

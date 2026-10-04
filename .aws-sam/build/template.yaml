@@ -215,10 +215,24 @@ Resources:
         Ref: Environment
       Cors:
         AllowMethods: '''GET,POST,PATCH,OPTIONS,PUT,DELETE'''
-        AllowHeaders: '''Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'''
+        AllowHeaders: '''Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,Accept'''
         AllowOrigin: '''*'''
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: '''*'''
+              Access-Control-Allow-Headers: '''Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,Accept'''
+              Access-Control-Allow-Methods: '''GET,POST,PATCH,OPTIONS,PUT,DELETE'''
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: '''*'''
+              Access-Control-Allow-Headers: '''Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,Accept'''
+              Access-Control-Allow-Methods: '''GET,POST,PATCH,OPTIONS,PUT,DELETE'''
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn:
@@ -415,7 +429,7 @@ Resources:
               - ServiceForgeTable
               - Arn
             - Fn::Sub: ${ServiceForgeTable.Arn}/index/*
-      - PolicyName: S3Access
+      - PolicyName: S3AttachmentAccess
         PolicyDocument:
           Version: '2012-10-17'
           Statement:
@@ -423,9 +437,77 @@ Resources:
             Action:
             - s3:GetObject
             - s3:PutObject
-            - s3:DeleteObject
             Resource:
             - Fn::Sub: ${ServiceForgeAttachmentsBucket.Arn}/*
+  CustomerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: ServiceForgeCustomerRole-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: DynamoDBAccess
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:Query
+            Resource:
+            - Fn::GetAtt:
+              - ServiceForgeTable
+              - Arn
+            - Fn::Sub: ${ServiceForgeTable.Arn}/index/*
+  AssetLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: ServiceForgeAssetRole-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: DynamoDBAccess
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:Query
+            Resource:
+            - Fn::GetAtt:
+              - ServiceForgeTable
+              - Arn
+            - Fn::Sub: ${ServiceForgeTable.Arn}/index/*
+  ServiceForgeSharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName:
+        Fn::Sub: serviceforge-shared-layer-${Environment}
+      Description: Shared Python modules for ServiceForge AI (shared.auth, shared.responses,
+        shared.dynamodb, etc.)
+      ContentUri: ..\..\Backend\shared_layer
+      CompatibleRuntimes:
+      - python3.12
+      RetentionPolicy: Retain
   ServiceRequestFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -435,7 +517,36 @@ Resources:
         Fn::GetAtt:
         - ServiceRequestLambdaRole
         - Arn
+      Layers:
+      - Ref: ServiceForgeSharedLayer
       Events:
+        OptionsServiceRequests:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-requests
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceRequestsId:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-requests/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceRequestsAnalyze:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-requests/{id}/analyze
+            Method: options
+            Auth:
+              Authorizer: NONE
         CreateRequest:
           Type: Api
           Properties:
@@ -482,7 +593,54 @@ Resources:
         Fn::GetAtt:
         - ServiceJobLambdaRole
         - Arn
+      Layers:
+      - Ref: ServiceForgeSharedLayer
       Events:
+        OptionsServiceJobs:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-jobs
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsId:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-jobs/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsAssign:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-jobs/{id}/assign
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsUpdates:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-jobs/{id}/updates
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsServiceJobsComplete:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-jobs/{id}/complete
+            Method: options
+            Auth:
+              Authorizer: NONE
         CreateJob:
           Type: Api
           Properties:
@@ -536,7 +694,27 @@ Resources:
         Fn::GetAtt:
         - TechnicianLambdaRole
         - Arn
+      Layers:
+      - Ref: ServiceForgeSharedLayer
       Events:
+        OptionsTechnicians:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /technicians
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsTechniciansId:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /technicians/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
         ListTechnicians:
           Type: Api
           Properties:
@@ -562,7 +740,27 @@ Resources:
         Fn::GetAtt:
         - ReportLambdaRole
         - Arn
+      Layers:
+      - Ref: ServiceForgeSharedLayer
       Events:
+        OptionsReportGenerate:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-jobs/{id}/report/generate
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsReport:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /service-jobs/{id}/report
+            Method: options
+            Auth:
+              Authorizer: NONE
         GenerateReport:
           Type: Api
           Properties:
@@ -588,7 +786,36 @@ Resources:
         Fn::GetAtt:
         - AttachmentLambdaRole
         - Arn
+      Layers:
+      - Ref: ServiceForgeSharedLayer
       Events:
+        OptionsAttachmentPresign:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /attachments/presign
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsAttachmentConfirm:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /attachments/{id}/confirm
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsAttachmentDelete:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /attachments/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
         PresignAttachment:
           Type: Api
           Properties:
@@ -612,6 +839,98 @@ Resources:
             Method: delete
     Metadata:
       SamResourceId: AttachmentFunction
+  CustomerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: CustomerFunction
+      Handler: handler.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - CustomerLambdaRole
+        - Arn
+      Layers:
+      - Ref: ServiceForgeSharedLayer
+      Events:
+        OptionsCustomers:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /customers
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsCustomersId:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /customers/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
+        ListCustomers:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /customers
+            Method: get
+        GetCustomer:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /customers/{id}
+            Method: get
+    Metadata:
+      SamResourceId: CustomerFunction
+  AssetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: AssetFunction
+      Handler: handler.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - AssetLambdaRole
+        - Arn
+      Layers:
+      - Ref: ServiceForgeSharedLayer
+      Events:
+        OptionsAssets:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /assets
+            Method: options
+            Auth:
+              Authorizer: NONE
+        OptionsAssetsId:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /assets/{id}
+            Method: options
+            Auth:
+              Authorizer: NONE
+        ListAssets:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /assets
+            Method: get
+        GetAsset:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ServiceForgeApi
+            Path: /assets/{id}
+            Method: get
+    Metadata:
+      SamResourceId: AssetFunction
   ServiceRequestLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:

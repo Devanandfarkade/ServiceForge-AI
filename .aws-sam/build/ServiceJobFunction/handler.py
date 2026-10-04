@@ -26,12 +26,15 @@ def lambda_handler(event: dict, context) -> dict:
     request_id = extract_request_id(event)
 
     try:
+        http_method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "GET")
+        if http_method == "OPTIONS":
+            return build_success_response({"message": "CORS preflight successful"}, 200, request_id)
+
         user_ctx = extract_user_context(event)
         org_id = user_ctx["organizationId"]
         user_id = user_ctx["userId"]
         role = user_ctx["role"]
 
-        http_method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "GET")
         path = event.get("path") or event.get("rawPath", "/service-jobs")
         path_parameters = event.get("pathParameters") or {}
         job_id_param = path_parameters.get("id")
@@ -44,9 +47,6 @@ def lambda_handler(event: dict, context) -> dict:
             role=role,
             operation=f"ServiceJob.{http_method}"
         )
-
-        if http_method == "OPTIONS":
-            return build_success_response({"message": "CORS preflight successful"}, 200, request_id)
 
         # ----------------------------------------------------------------------
         # 1. POST /service-jobs — Create Service Job from Approved Request

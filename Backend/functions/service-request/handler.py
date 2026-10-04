@@ -146,7 +146,7 @@ def lambda_handler(event: dict, context) -> dict:
         # 5. PATCH /service-requests/{id} — Status Update / Approval
         # ----------------------------------------------------------------------
         elif http_method in ["PATCH", "PUT"] and req_id_param:
-            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER"])
+            require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER", "TECHNICIAN", "CUSTOMER"])
 
             body_str = event.get("body", "{}") or "{}"
             payload = json.loads(body_str) if isinstance(body_str, str) else body_str
@@ -169,6 +169,9 @@ def lambda_handler(event: dict, context) -> dict:
                 "GSI1PK": f"ORG#{org_id}#STATUS#{new_status}",
                 "GSI2PK": f"ORG#{org_id}#PRIORITY#{new_priority}"
             }
+
+            if "attachments" in payload:
+                updates["attachments"] = payload["attachments"]
 
             updated_item = db_client.update_item(pk, sk, updates)
             return build_success_response(clean_dynamodb_keys(updated_item), 200, request_id)

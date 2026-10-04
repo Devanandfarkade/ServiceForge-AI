@@ -14,7 +14,7 @@ from shared.config import Config
 from shared.dynamodb import db_client
 from shared.errors import NotFoundError, ServiceForgeError
 from shared.logging_utils import logger
-from shared.models import build_attachment_item, clean_dynamodb_keys
+from shared.models import build_attachment_item, clean_dynamodb_keys, now_iso
 from shared.responses import build_error_response, build_success_response, extract_request_id, handle_exception
 from shared.s3 import s3_client
 from shared.validation import validate_attachment_presign_input
@@ -120,29 +120,55 @@ def lambda_handler(event: dict, context) -> dict:
         # ----------------------------------------------------------------------
         # 2. POST /attachments/{id}/confirm — Confirm Upload Completion
         # ----------------------------------------------------------------------
-        elif http_method == "POST" and att_id_param and path.endswith("/confirm"):
+        elif http_method == "POST" and (att_id_param or "/confirm" in path):
             require_role(user_ctx, ["ADMIN", "SERVICE_MANAGER", "DISPATCHER", "TECHNICIAN", "CUSTOMER"])
 
-            # Query GSI1 for metadata or match attachment
+            # Resolve attachment ID from path parameter or raw path string
+            att_id = att_id_param
+            if not att_id and "/attachments/" in path:
+                att_id = path.split("/attachments/")[1].split("/confirm")[0].strip("/")
+
+            body_str = event.get("body", "{}") or "{}"
+            payload = json.loads(body_str) if isinstance(body_str, str) and body_str.strip() else (body_str if isinstance(body_str, dict) else {})
+
+            # 1. Query DynamoDB for attachment metadata matching attachmentId
             items = db_client.query(pk=f"ORG#{org_id}", sk_prefix="ATTACHMENT#")
             target_att = None
             for item in items:
-                if item.get("attachmentId") == att_id_param:
+                if item.get("attachmentId") == att_id or item.get("SK", "").endswith(f"#{att_id}"):
                     target_att = item
                     break
 
+            # 2. Fall back to GSI1 query if s3ObjectKey provided and item not found
+            if not target_att and payload.get("s3ObjectKey"):
+                gsi_items = db_client.query(
+                    gsi_name="GSI1",
+                    gsi_pk=f"ORG#{org_id}#S3KEY#{payload['s3ObjectKey']}",
+                    gsi_sk_prefix="METADATA"
+                )
+                if gsi_items:
+                    target_att = gsi_items[0]
+
             if not target_att:
-                raise NotFoundError(f"Attachment '{att_id_param}' not found in user organization.")
+                raise NotFoundError(f"Attachment '{att_id}' not found in user organization.")
 
             verify_tenant_access(user_ctx, target_att["organizationId"])
 
+            # 3. Optional S3 object existence check
+            s3_key = target_att.get("s3ObjectKey") or payload.get("s3ObjectKey")
+            if s3_key and hasattr(s3_client, "check_object_exists"):
+                s3_client.check_object_exists(s3_key)
+
+            # 4. Update attachment status to ACTIVE
+            ts = now_iso()
             updated_att = db_client.update_item(
                 pk=target_att["PK"],
                 sk=target_att["SK"],
-                updates={"status": "ACTIVE"}
+                updates={"status": "ACTIVE", "updatedAt": ts}
             )
 
-            return build_success_response(clean_dynamodb_keys(updated_att), 200, request_id)
+            result_item = updated_att if updated_att else {**target_att, "status": "ACTIVE", "updatedAt": ts}
+            return build_success_response(clean_dynamodb_keys(result_item), 200, request_id)
 
         # ----------------------------------------------------------------------
         # 3. DELETE /attachments/{id} — Delete Attachment Metadata

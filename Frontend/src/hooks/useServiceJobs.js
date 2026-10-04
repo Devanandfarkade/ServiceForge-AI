@@ -37,10 +37,14 @@ export function useServiceJobs(filters = {}) {
     } catch (err) {
       if (err.code === 'INVALID_TOKEN') return;
       setError(err.message || 'Failed to load service jobs.');
-      try {
-        const fallback = await serviceJobService.getJobs(filters);
-        setJobs(Array.isArray(fallback) ? fallback : []);
-      } catch {
+      if (!isLoggedIn) {
+        try {
+          const fallback = await serviceJobService.getJobs(filters);
+          setJobs(Array.isArray(fallback) ? fallback : []);
+        } catch {
+          setJobs([]);
+        }
+      } else {
         setJobs([]);
       }
     } finally {
@@ -76,10 +80,14 @@ export function useServiceJob(id) {
       setJob(data);
     } catch (err) {
       setError(err.message || 'Failed to load service job.');
-      try {
-        const fallback = await serviceJobService.getJobById(id);
-        setJob(fallback);
-      } catch {
+      if (!isLoggedIn) {
+        try {
+          const fallback = await serviceJobService.getJobById(id);
+          setJob(fallback);
+        } catch {
+          setJob(null);
+        }
+      } else {
         setJob(null);
       }
     } finally {

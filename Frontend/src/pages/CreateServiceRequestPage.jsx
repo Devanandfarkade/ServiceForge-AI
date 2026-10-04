@@ -51,15 +51,39 @@ export function CreateServiceRequestPage() {
 
   useEffect(() => {
     async function loadFormOptions() {
-      const custs = await customerService.getCustomers();
-      const asts = await assetService.getAssets();
-      setCustomers(custs);
-      setAssets(asts);
-      if (custs.length > 0) setSelectedCustomerId(custs[0].customerId);
-      if (asts.length > 0) setSelectedAssetId(asts[0].assetId);
+      try {
+        const custs = await customerService.getCustomers();
+        setCustomers(custs);
+        if (custs.length > 0) {
+          const firstCustId = custs[0].customerId;
+          setSelectedCustomerId(firstCustId);
+          const asts = await assetService.getAssetsByCustomer(firstCustId);
+          setAssets(asts);
+          if (asts.length > 0) setSelectedAssetId(asts[0].assetId);
+        }
+      } catch (err) {
+        if (isLoggedIn) {
+          setSubmissionError(`Failed to load customer or asset options: ${err.message}`);
+        }
+      }
     }
     loadFormOptions();
-  }, []);
+  }, [isLoggedIn]);
+
+  const handleCustomerChange = async (e) => {
+    const custId = e.target.value;
+    setSelectedCustomerId(custId);
+    setSelectedAssetId('');
+    try {
+      const asts = await assetService.getAssetsByCustomer(custId);
+      setAssets(asts);
+      if (asts.length > 0) setSelectedAssetId(asts[0].assetId);
+    } catch (err) {
+      if (isLoggedIn) {
+        setSubmissionError(`Failed to load assets for selected customer: ${err.message}`);
+      }
+    }
+  };
 
   // Handle direct typing change
   const handleTypedDescriptionChange = (e) => {
@@ -108,15 +132,32 @@ export function CreateServiceRequestPage() {
       let newReq;
 
       if (isLoggedIn) {
-        // Step 1: Upload attachments to S3 via presigned URLs
-        let uploadedAttachments = [];
+        setProcessingStepText('Preparing your service request...');
+        setTimeout(() => setProcessingStepText('Reviewing the problem description and evidence...'), 400);
+
+        // Step 1: Create the Service Request first without attachment IDs to get real requestId
+        newReq = await liveServiceRequestService.createRequest({
+          customerId: selectedCustomerId,
+          customerName: cust ? (cust.companyName || cust.name) : 'Industrial Plastics Corp',
+          assetId: selectedAssetId,
+          assetName: ast ? ast.name : 'Industrial Air Compressor AC-4500',
+          rawDescription: description,
+          descriptionSource,
+          priority,
+          attachments: [],
+          channel: 'WEB_PORTAL',
+        });
+
+        // Step 2: Request presigned URLs, upload to S3, and confirm attachments using real requestId
         if (attachments.length > 0) {
-          setProcessingStepText('Uploading evidence files to secure storage...');
-          // We need a temporary requestId prefix; we use a client-side temp ID
-          // The real requestId will be assigned by the backend on creation
-          const tempPrefix = `tmp-${Date.now()}`;
+          setProcessingStepText('Uploading evidence files to secure S3 bucket...');
           try {
-            uploadedAttachments = await liveAttachmentService.uploadAll(attachments, tempPrefix);
+            const uploadedAttachments = await liveAttachmentService.uploadAll(attachments, newReq.requestId);
+            const attachmentIds = uploadedAttachments.map(a => a.attachmentId || a.s3ObjectKey);
+            
+            // Step 3: Associate confirmed attachment IDs with Service Request via PATCH
+            await liveServiceRequestService.updateRequest(newReq.requestId, { attachments: attachmentIds });
+            newReq.attachments = attachmentIds;
           } catch (uploadErr) {
             setSubmissionError(`Attachment upload failed: ${uploadErr.message}`);
             setIsAnalyzing(false);
@@ -124,28 +165,11 @@ export function CreateServiceRequestPage() {
           }
         }
 
-        setProcessingStepText('Preparing your service request...');
-        setTimeout(() => setProcessingStepText('Reviewing the problem description and evidence...'), 400);
-        setTimeout(() => setProcessingStepText('Assessing equipment telemetry and fault history...'), 800);
-        setTimeout(() => setProcessingStepText('Evaluating required technician skill profiles & tools...'), 1200);
-
-        // Step 2: Create the request with S3 attachment metadata
-        newReq = await liveServiceRequestService.createRequest({
-          customerId: selectedCustomerId,
-          customerName: cust ? cust.companyName : 'Industrial Plastics Corp',
-          assetId: selectedAssetId,
-          assetName: ast ? ast.name : 'Industrial Air Compressor AC-4500',
-          rawDescription: description,
-          descriptionSource,
-          priority,
-          attachments: uploadedAttachments,
-          channel: 'WEB_PORTAL',
-        });
-
         setCreatedRequest(newReq);
 
-        // Step 3: Trigger AI analysis
-        await new Promise(resolve => setTimeout(resolve, 1600));
+        // Step 4: Trigger AI analysis (Phase 1 boundary)
+        setProcessingStepText('Assessing equipment telemetry and fault history...');
+        await new Promise(resolve => setTimeout(resolve, 800));
         const result = await liveServiceRequestService.analyzeRequest(newReq.requestId);
         setAiResult(result);
       } else {
@@ -272,9 +296,9 @@ export function CreateServiceRequestPage() {
               <Select
                 label="Customer Account"
                 value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                onChange={handleCustomerChange}
                 options={customers.map((c) => ({
-                  label: `${c.companyName} (${c.slaTier})`,
+                  label: c.companyName || c.name,
                   value: c.customerId
                 }))}
               />
@@ -284,7 +308,7 @@ export function CreateServiceRequestPage() {
                 value={selectedAssetId}
                 onChange={(e) => setSelectedAssetId(e.target.value)}
                 options={assets.map((a) => ({
-                  label: `${a.name} (SN: ${a.serialNumber})`,
+                  label: `${a.name}${a.serialNumber ? ` (SN: ${a.serialNumber})` : ''}`,
                   value: a.assetId
                 }))}
               />
@@ -463,11 +487,11 @@ export function CreateServiceRequestPage() {
               </span>
               <span className="text-slate-300 dark:text-slate-700">|</span>
               <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Mock AI outputs synthesized from description & attached evidence.
+                AI Integration Placeholder (Phase 1 Boundary — Request created in live AWS database).
               </span>
             </div>
             <div className="text-[11px] font-mono text-cyan-800 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 px-3 py-0.5 rounded-full font-bold self-start sm:self-auto">
-              Confidence: High · {(aiResult.confidenceScore * 100).toFixed(0)}%
+              Confidence: High · {((aiResult?.confidenceScore || 0.95) * 100).toFixed(0)}%
             </div>
           </div>
 
@@ -557,7 +581,7 @@ export function CreateServiceRequestPage() {
                   <span className="text-cyan-600 dark:text-cyan-400 font-bold">⚡</span>
                   <CardTitle>AI Job Preparation</CardTitle>
                 </div>
-                <Badge variant="cyan">Recommended Priority: {aiResult.recommendedPriority}</Badge>
+                <Badge variant="cyan">Recommended Priority: {aiResult?.recommendedPriority || 'HIGH'}</Badge>
               </CardHeader>
 
               <div className="space-y-3.5 text-xs">
@@ -566,7 +590,7 @@ export function CreateServiceRequestPage() {
                     Required Technician Expertise
                   </span>
                   <div className="mt-1 text-slate-900 dark:text-slate-100 font-semibold text-sm">
-                    {aiResult.recommendedSkillProfile}
+                    {aiResult?.recommendedSkillProfile || 'Industrial Specialist'}
                   </div>
                 </div>
 
@@ -575,7 +599,7 @@ export function CreateServiceRequestPage() {
                     Suggested Inspection Steps
                   </span>
                   <div className="space-y-1.5">
-                    {aiResult.suggestedInspectionSteps.map((step, idx) => (
+                    {(aiResult?.suggestedInspectionSteps || []).map((step, idx) => (
                       <div
                         key={idx}
                         className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-start gap-2"
@@ -601,7 +625,7 @@ export function CreateServiceRequestPage() {
                     Recommended Tools & Parts
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {aiResult.suggestedTools.map((t, idx) => (
+                    {(aiResult?.suggestedTools || []).map((t, idx) => (
                       <span
                         key={idx}
                         className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-[11px]"
@@ -609,7 +633,7 @@ export function CreateServiceRequestPage() {
                         🔧 {t}
                       </span>
                     ))}
-                    {aiResult.suggestedParts.map((p, idx) => (
+                    {(aiResult?.suggestedParts || []).map((p, idx) => (
                       <span
                         key={idx}
                         className="px-2 py-1 rounded bg-cyan-50 dark:bg-cyan-500/10 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/30 text-[11px]"
@@ -625,7 +649,7 @@ export function CreateServiceRequestPage() {
                     Safety Considerations
                   </span>
                   <div className="space-y-1 text-amber-800 dark:text-amber-300 text-[11px] bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg">
-                    {aiResult.safetyConsiderations.map((s, idx) => (
+                    {(aiResult?.safetyConsiderations || []).map((s, idx) => (
                       <div key={idx} className="flex items-center gap-1.5">
                         <span>⚠</span>
                         <span>{s}</span>

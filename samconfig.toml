@@ -1,12 +1,12 @@
 version = 0.1
 
 [default.deploy.parameters]
-stack_name = "sam-app"
+stack_name = "serviceforge-ai"
 resolve_s3 = true
-s3_prefix = "sam-app"
+s3_prefix = "serviceforge-ai"
 region = "ap-south-1"
 profile = "serviceforge-dev"
-capabilities = "CAPABILITY_IAM"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
 parameter_overrides = "Environment=\"prod\" TableName=\"ServiceForge\" BedrockModelId=\"anthropic.claude-3-5-sonnet-20241022-v2:0\""
 image_repositories = []
 

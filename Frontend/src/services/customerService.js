@@ -1,10 +1,12 @@
-import { mockCustomers } from '../data/mockData';
+import { apiClient } from '../lib/apiClient';
 
 export const customerService = {
   getCustomers: async () => {
-    return [...mockCustomers];
+    const data = await apiClient.get('/customers');
+    return Array.isArray(data) ? data : [];
   },
   getCustomerById: async (id) => {
-    return mockCustomers.find(c => c.customerId === id) || null;
+    if (!id) return null;
+    return await apiClient.get(`/customers/${id}`);
   }
 };

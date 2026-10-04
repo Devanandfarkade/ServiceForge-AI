@@ -1,10 +1,17 @@
-import { mockAssets } from '../data/mockData';
+import { apiClient } from '../lib/apiClient';
 
 export const assetService = {
   getAssets: async () => {
-    return [...mockAssets];
+    const data = await apiClient.get('/assets');
+    return Array.isArray(data) ? data : [];
+  },
+  getAssetsByCustomer: async (customerId) => {
+    if (!customerId) return [];
+    const data = await apiClient.get(`/assets?customerId=${encodeURIComponent(customerId)}`);
+    return Array.isArray(data) ? data : [];
   },
   getAssetById: async (id) => {
-    return mockAssets.find(a => a.assetId === id) || null;
+    if (!id) return null;
+    return await apiClient.get(`/assets/${id}`);
   }
 };

@@ -142,9 +142,14 @@ export const apiClient = {
    * @param {string} contentType
    */
   uploadToS3: async (presignedUrl, file, contentType) => {
+    const headers = {};
+    if (contentType) {
+      headers['Content-Type'] = contentType;
+    }
+
     const response = await fetch(presignedUrl, {
       method: 'PUT',
-      headers: { 'Content-Type': contentType },
+      headers,
       body: file,
     });
 
