@@ -1,17 +1,25 @@
 # ServiceForge AI — Amazon Bedrock AI Architecture & Prompts Specification
 
-**Version:** 1.0.0  
+**Version:** 2.0.0  
 **Project:** ServiceForge AI  
 **AI Platform:** Amazon Bedrock  
 **Primary Models:**
-- `anthropic.claude-3-5-sonnet-20241022-v2:0` (Primary Reasoning, Triage & Report Generation)
-- `anthropic.claude-3-haiku-20240307-v1:0` (Fast Triage & Classification Fallback)  
+- `amazon.nova-2-lite-v1:0` (Primary Multimodal Reasoning, Triage & Decision Support)
+- `amazon.nova-lite-v1:0` (AWS-Native Triage & Classification Fallback)  
+**Speech-to-Text Platform:**
+- Amazon Transcribe (Voice -> Text Input Pipeline)
 
 ---
 
-## 1. AI Decision Support & Safety Governance Principles
+## 1. AI Architecture & Safety Governance Principles
 
-### 1.1 Decision Support Mandate
+### 1.1 Modality Architecture Boundaries
+ServiceForge AI enforces strict structural separation between Speech-to-Text and Multimodal Analysis:
+- **Voice Input:** Amazon Transcribe converts raw voice recordings into text (`VOICE -> TEXT`).
+- **Multimodal Analysis:** Amazon Nova 2 Lite processes text (typed or transcribed) + uploaded S3 image attachments (`TEXT + IMAGE -> SERVICEFORGE AI ANALYSIS`).
+- **Preserved Boundaries:** Amazon Transcribe is never bypassed or replaced by Nova. Transcribed voice output seamlessly passes as standard text input to Nova 2 Lite.
+
+### 1.2 Decision Support Mandate
 ServiceForge AI operates under a strict **Decision Support Paradigm**:
 1. **No Automated Field Execution:** AI recommendations (suggested priority, tools, parts, safety rules) are generated as *suggestions* for human review.
 2. **Explicit Separation:** UI strictly segregates raw customer inputs from AI-suggested diagnostic metadata.
@@ -33,11 +41,13 @@ ServiceForge AI configures **Amazon Bedrock Guardrails** to enforce safety, regu
 ## 3. Capability 1: Multimodal Service Request Analysis & Decision Support
 
 ### 3.1 Model Configuration
-- **Model ID:** `anthropic.claude-3-5-sonnet-20241022-v2:0`
+- **Model ID:** `amazon.nova-2-lite-v1:0`
+- **Fallback Model ID:** `amazon.nova-lite-v1:0`
+- **Payload Schema:** `messages-v1`
 - **Temperature:** `0.1` (Low temperature for deterministic, structured JSON extraction)
 - **Top_P:** `0.9`
 - **Max Tokens:** `2500`
-- **Multimodal Capabilities:** Native text, image vision (OCR for equipment nameplates, visual damage assessment), and document text processing.
+- **Multimodal Capabilities:** Native text, image vision (`jpeg`, `png`, `webp` OCR for equipment nameplates, visual damage assessment), and document text processing.
 
 ### 3.2 Multimodal System Prompt Template (`v2.0`)
 ```text
@@ -54,13 +64,16 @@ RULES:
 
 INPUT JSON & MULTIMODAL PAYLOAD:
 {
-  "request_id": "{request_id}",
-  "description": "{description}",
-  "description_source": "{description_source}",
-  "customer_name": "{customer_name}",
-  "asset_name": "{asset_name}",
-  "attached_images": [{image_base64_or_s3_reference}],
-  "attached_documents": [{document_text_content}]
+  "schemaVersion": "messages-v1",
+  "system": [{"text": "<system_prompt>"}],
+  "messages": [{
+    "role": "user",
+    "content": [
+      {"text": "<service_request_context>"},
+      {"image": {"format": "jpeg", "source": {"bytes": "<base64>"}}}
+    ]
+  }],
+  "inferenceConfig": {"maxTokens": 2500, "temperature": 0.1, "topP": 0.9}
 }
 ```
 
@@ -96,7 +109,7 @@ INPUT JSON & MULTIMODAL PAYLOAD:
 ## 4. Capability 2: AI Service Completion Report Generation
 
 ### 4.1 Model Configuration
-- **Model ID:** `anthropic.claude-3-5-sonnet-20241022-v2:0`
+- **Model ID:** `amazon.nova-2-lite-v1:0`
 - **Temperature:** `0.3` (Slightly higher for professional, polished report formatting)
 - **Max Tokens:** `3000`
 
@@ -138,19 +151,19 @@ INPUT JSON:
 
 ```mermaid
 flowchart TD
-    InvokeBedrock["Invoke Amazon Bedrock\n(Claude 3.5 Sonnet)"] --> CheckOutput{Valid JSON & Schema?}
+    InvokeBedrock["Invoke Amazon Bedrock\n(Amazon Nova 2 Lite)"] --> CheckOutput{Valid JSON & Schema?}
     CheckOutput -->|Yes| SaveDDB["Save AIAnalysis to DynamoDB\n(Status: PENDING_REVIEW)"]
-    CheckOutput -->|JSON Schema Error| RetryFormat["Retry 1x with Formatting Fix Prompt"]
+    CheckOutput -->|JSON Schema Error| RetryFormat["Retry 1x with Nova messages-v1 Format Fix Prompt"]
     RetryFormat --> CheckOutput
-    CheckOutput -->|Timeout / Throttled| FallbackHaiku["Fallback to Claude 3 Haiku Model"]
-    FallbackHaiku --> CheckOutput
-    CheckOutput -->|Bedrock Unavailable| GracefulFallback["Save Request with Status: PENDING_MANUAL_TRIAGE"]
+    CheckOutput -->|Timeout / Throttled| FallbackNova["Fallback to Amazon Nova Lite Model"]
+    FallbackNova --> CheckOutput
+    CheckOutput -->|Bedrock Unavailable| RealError["Return Real Bedrock Service Error (502)"]
 ```
 
 ### 5.1 Fallback Rules:
-1. **Invalid JSON Output:** If Bedrock returns invalid JSON, the Lambda function triggers a single automated repair prompt (`"Re-format the following content as valid JSON strictly adhering to schema..."`).
-2. **Bedrock Service Throttling / Timeout:** If Claude 3.5 Sonnet times out (> 15 seconds) or hits throttling limits, the handler falls back to `anthropic.claude-3-haiku-20240307-v1:0` for lightweight triage.
-3. **Total API Failure:** If Bedrock is completely unavailable, the Service Request is saved with status `PENDING_MANUAL_TRIAGE` allowing the Service Manager to manually populate job parameters without crashing the intake workflow.
+1. **Invalid JSON Output:** If Nova 2 Lite returns invalid JSON, the Lambda function triggers a single automated repair prompt using Nova `messages-v1` format.
+2. **Bedrock Service Throttling / Timeout:** If Amazon Nova 2 Lite times out or encounters invocation errors, the handler falls back to AWS-native `amazon.nova-lite-v1:0`.
+3. **Total API Failure:** If both primary and fallback Nova models fail, the handler returns a real Bedrock service error (HTTP 502 `BEDROCK_SERVICE_ERROR`). No synthetic or fake AI results are generated.
 
 ---
 

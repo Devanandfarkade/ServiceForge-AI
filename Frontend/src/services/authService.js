@@ -1,10 +1,13 @@
-import { currentUser, currentOrganization } from '../data/mockData';
+import { getValidIdToken } from '../lib/cognito';
 
 export const authService = {
   getCurrentUser: async () => {
-    return { ...currentUser, organization: currentOrganization };
+    const token = await getValidIdToken();
+    if (!token) return null;
+    return { token };
   },
   getOrganization: async () => {
-    return currentOrganization;
+    return null;
   }
 };
+

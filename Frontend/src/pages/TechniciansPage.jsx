@@ -10,12 +10,21 @@ export function TechniciansPage() {
   const { navigate } = useRouter();
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     async function loadTechs() {
-      const data = await technicianService.getTechnicians();
-      setTechnicians(data);
-      setLoading(false);
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await technicianService.getTechnicians();
+        setTechnicians(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to load technicians:', err);
+        setError(err.message || 'Failed to load technicians.');
+      } finally {
+        setLoading(false);
+      }
     }
     loadTechs();
   }, []);
@@ -36,6 +45,16 @@ export function TechniciansPage() {
 
       {loading ? (
         <LoadingSpinner label="Loading technicians..." />
+      ) : error ? (
+        <Card className="p-8 text-center text-rose-600 dark:text-rose-400 space-y-2 border-rose-200 dark:border-rose-900/50">
+          <div className="text-sm font-bold">Failed to Load Technicians</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">{error}</div>
+        </Card>
+      ) : technicians.length === 0 ? (
+        <Card className="p-8 text-center text-slate-500 dark:text-slate-400 space-y-2">
+          <div className="text-sm font-bold text-slate-800 dark:text-slate-200">No Technicians Registered</div>
+          <div className="text-xs">There are currently no technician profiles in this organization.</div>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {technicians.map((tech) => (
@@ -65,14 +84,16 @@ export function TechniciansPage() {
                 </div>
                 <div className="flex justify-between text-slate-500">
                   <span>Location:</span>
-                  <span className="text-slate-800 dark:text-slate-200 font-semibold">{tech.currentLocation.city}</span>
+                  <span className="text-slate-800 dark:text-slate-200 font-semibold">
+                    {typeof tech.currentLocation === 'object' ? (tech.currentLocation?.city || 'Main Plant') : (tech.currentLocation || tech.location || 'North Sector')}
+                  </span>
                 </div>
               </div>
 
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5">Certified Skills</span>
                 <div className="flex flex-wrap gap-1">
-                  {tech.skills.map((sk, idx) => (
+                  {(tech.skills || tech.certifications || []).map((sk, idx) => (
                     <span key={idx} className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-mono font-bold">
                       {sk}
                     </span>

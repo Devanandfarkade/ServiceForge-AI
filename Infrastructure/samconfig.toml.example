@@ -16,7 +16,7 @@ s3_prefix = "serviceforge-sam-artifacts"
 region = "ap-south-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
-parameter_overrides = "Environment=\"prod\" TableName=\"ServiceForge\" BedrockModelId=\"apac.anthropic.claude-3-5-sonnet-20241022-v2:0\""
+parameter_overrides = "Environment=\"prod\" TableName=\"ServiceForge\" BedrockModelId=\"amazon.nova-2-lite-v1:0\""
 image_repositories = []
 
 [dev]
@@ -27,4 +27,4 @@ s3_prefix = "serviceforge-dev-artifacts"
 region = "ap-south-1"
 confirm_changeset = false
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
-parameter_overrides = "Environment=\"dev\" TableName=\"ServiceForgeDev\" BedrockModelId=\"apac.anthropic.claude-3-5-sonnet-20241022-v2:0\""
+parameter_overrides = "Environment=\"dev\" TableName=\"ServiceForgeDev\" BedrockModelId=\"amazon.nova-2-lite-v1:0\""

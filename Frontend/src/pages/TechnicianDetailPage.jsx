@@ -59,7 +59,7 @@ export function TechnicianDetailPage({ id }) {
       <div className="p-4 rounded-2xl bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-bold text-sm">
-            {tech.fullName.split(' ').map(n => n[0]).join('')}
+            {(tech.fullName || 'Tech').split(' ').map(n => n[0]).join('')}
           </div>
           <div>
             <div className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">

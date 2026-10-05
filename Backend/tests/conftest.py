@@ -67,6 +67,7 @@ LAMBDA_MODULES = [
     ("functions.report.handler", "functions/report/handler.py"),
     ("functions.customer.handler", "functions/customer/handler.py"),
     ("functions.asset.handler", "functions/asset/handler.py"),
+    ("functions.profile.handler", "functions/profile/handler.py"),
 ]
 
 for alias, path in LAMBDA_MODULES:

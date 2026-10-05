@@ -9,6 +9,14 @@ export function ThemeProvider({ children }) {
     return 'light'; // Default to Light Mode per user requirement
   });
 
+  const [accent, setAccentState] = useState(() => {
+    const savedAccent = localStorage.getItem('serviceforge_accent');
+    if (['blue', 'teal', 'emerald', 'amber', 'purple'].includes(savedAccent)) {
+      return savedAccent;
+    }
+    return 'blue';
+  });
+
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -21,9 +29,21 @@ export function ThemeProvider({ children }) {
     localStorage.setItem('serviceforge_theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-accent', accent);
+    localStorage.setItem('serviceforge_accent', accent);
+  }, [accent]);
+
   const setTheme = (newTheme) => {
     if (newTheme === 'dark' || newTheme === 'light') {
       setThemeState(newTheme);
+    }
+  };
+
+  const setAccent = (newAccent) => {
+    if (['blue', 'teal', 'emerald', 'amber', 'purple'].includes(newAccent)) {
+      setAccentState(newAccent);
     }
   };
 
@@ -32,7 +52,7 @@ export function ThemeProvider({ children }) {
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, accent, setAccent }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -45,3 +65,4 @@ export function useTheme() {
   }
   return context;
 }
+

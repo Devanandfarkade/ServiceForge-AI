@@ -6,9 +6,8 @@ import { Badge } from '../components/ui/Badge';
 import { useTheme } from '../lib/theme';
 
 export function SettingsPage() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, accent, setAccent } = useTheme();
   const [activeSection, setActiveSection] = useState('appearance');
-  const [accentColor, setAccentColor] = useState('blue');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
@@ -124,9 +123,9 @@ export function SettingsPage() {
                       <button
                         key={acc.id}
                         type="button"
-                        onClick={() => setAccentColor(acc.id)}
+                        onClick={() => setAccent(acc.id)}
                         className={`w-6 h-6 rounded-full ${acc.color} transition-all cursor-pointer ${
-                          accentColor === acc.id ? 'ring-2 ring-offset-2 ring-blue-600 scale-110' : 'opacity-80 hover:opacity-100'
+                          accent === acc.id ? 'ring-2 ring-offset-2 ring-slate-900 dark:ring-white scale-110' : 'opacity-80 hover:opacity-100'
                         }`}
                       />
                     ))}
@@ -215,8 +214,8 @@ export function SettingsPage() {
                   <Select 
                     label="Primary Foundation Model"
                     options={[
-                      { label: 'Anthropic Claude 3.5 Sonnet (v2)', value: 'anthropic.claude-3-5-sonnet' },
-                      { label: 'Anthropic Claude 3 Haiku (v1)', value: 'anthropic.claude-3-haiku' }
+                      { label: 'Amazon Nova 2 Lite (v1)', value: 'amazon.nova-2-lite-v1:0' },
+                      { label: 'Amazon Nova Lite (v1)', value: 'amazon.nova-lite-v1:0' }
                     ]}
                   />
                   <Input label="Prompt Specification Version" defaultValue="v1.2 (Strict Decision Support)" disabled />

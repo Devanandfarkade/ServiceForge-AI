@@ -9,13 +9,22 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 export function ReportsPage() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
 
   useEffect(() => {
     async function loadReports() {
-      const data = await reportService.getReports();
-      setReports(data);
-      setLoading(false);
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await reportService.getReports();
+        setReports(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to load reports:', err);
+        setError(err.message || 'Failed to load service reports.');
+      } finally {
+        setLoading(false);
+      }
     }
     loadReports();
   }, []);
@@ -51,7 +60,7 @@ export function ReportsPage() {
         </Card>
         <Card className="p-4 border-l-4 border-l-slate-700">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Reports Generated</span>
-          <div className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-2">148</div>
+          <div className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-2">{reports.length}</div>
           <p className="text-[11px] text-slate-500 font-medium mt-1">Stored in Amazon S3</p>
         </Card>
       </div>
@@ -63,6 +72,16 @@ export function ReportsPage() {
         </CardHeader>
         {loading ? (
           <LoadingSpinner label="Loading service reports..." />
+        ) : error ? (
+          <div className="p-8 text-center text-rose-600 dark:text-rose-400 space-y-2">
+            <div className="text-sm font-bold">Failed to Load Service Reports</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">{error}</div>
+          </div>
+        ) : reports.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 dark:text-slate-400 space-y-2">
+            <div className="text-sm font-bold text-slate-800 dark:text-slate-200">No Service Reports Found</div>
+            <div className="text-xs">Completed job reports will appear in this tenant archive.</div>
+          </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {reports.map((rpt) => (

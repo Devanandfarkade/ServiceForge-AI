@@ -10,7 +10,7 @@ class Config:
     ENVIRONMENT = os.getenv("ENVIRONMENT", "prod")
     DYNAMODB_TABLE_NAME = os.getenv("DYNAMODB_TABLE_NAME", "ServiceForge")
     S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "serviceforge-ai-attachments-ap-south-1")
-    BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "apac.anthropic.claude-3-5-sonnet-20241022-v2:0")
+    BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-lite-v1:0")
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
     # Attachment Validation Governance Constants

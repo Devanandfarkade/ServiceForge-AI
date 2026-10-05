@@ -4,7 +4,6 @@ import { useTheme } from '../lib/theme';
 import { useNotifications } from '../lib/notifications';
 import { useAuth } from '../lib/AuthContext';
 import { Avatar } from '../components/ui/Avatar';
-import { currentUser, currentOrganization } from '../data/mockData';
 
 export function AppLayout({ children }) {
   const { path, navigate } = useRouter();
@@ -17,8 +16,15 @@ export function AppLayout({ children }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
-  // Use live user data when authenticated, fall back to mock for demo mode
-  const displayUser = authUser || currentUser;
+  // Authenticated user representation
+  const displayUser = {
+    fullName: authUser?.name || authUser?.email?.split('@')[0] || 'Service User',
+    email: authUser?.email || '',
+    role: authUser?.role || 'Service Manager',
+    avatarUrl: authUser?.avatarUrl || ''
+  };
+
+  const orgName = authUser?.orgId || 'ServiceForge AI Tenant';
 
   const profileRef = useRef(null);
   const notifRef = useRef(null);
@@ -207,7 +213,7 @@ export function AppLayout({ children }) {
           {/* Organization Switcher Badge */}
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-xs font-semibold text-slate-700 dark:text-slate-300">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>{currentOrganization.name}</span>
+            <span>{orgName}</span>
             <span className="text-slate-400 text-[10px]">▾</span>
           </div>
 
@@ -254,37 +260,43 @@ export function AppLayout({ children }) {
                 </div>
 
                 <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {notifications.map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        markAsRead(item.id);
-                        if (item.link) navigate(item.link);
-                        setNotificationsOpen(false);
-                      }}
-                      className={`p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer flex items-start gap-3 ${
-                        !item.read ? 'bg-blue-50/50 dark:bg-blue-500/5' : ''
-                      }`}
-                    >
-                      <span className="mt-0.5 text-base">
-                        {item.type === 'warning' ? '⚠️' : item.type === 'ai' ? '🤖' : '💬'}
-                      </span>
-                      <div className="flex-1 space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className={`font-semibold ${!item.read ? 'text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}>
-                            {item.title}
-                          </span>
-                          <span className="text-[10px] text-slate-500">{item.time}</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2">
-                          {item.message}
-                        </p>
-                      </div>
-                      {!item.read && (
-                        <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 shrink-0" />
-                      )}
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                      No new notifications
                     </div>
-                  ))}
+                  ) : (
+                    notifications.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          markAsRead(item.id);
+                          if (item.link) navigate(item.link);
+                          setNotificationsOpen(false);
+                        }}
+                        className={`p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer flex items-start gap-3 ${
+                          !item.read ? 'bg-blue-50/50 dark:bg-blue-500/5' : ''
+                        }`}
+                      >
+                        <span className="mt-0.5 text-base">
+                          {item.type === 'warning' ? '⚠️' : item.type === 'ai' ? '🤖' : '💬'}
+                        </span>
+                        <div className="flex-1 space-y-0.5">
+                          <div className="flex items-center justify-between">
+                            <span className={`font-semibold ${!item.read ? 'text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}>
+                              {item.title}
+                            </span>
+                            <span className="text-[10px] text-slate-500">{item.time}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2">
+                            {item.message}
+                          </p>
+                        </div>
+                        {!item.read && (
+                          <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 shrink-0" />
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 <div className="p-2.5 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50 dark:bg-slate-950/40">

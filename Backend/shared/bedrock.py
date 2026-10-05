@@ -54,8 +54,8 @@ REQUIRED OUTPUT JSON SCHEMA:
 
 class BedrockClient:
     def __init__(self):
-        self.primary_model_id = Config.BEDROCK_MODEL_ID or "apac.anthropic.claude-3-5-sonnet-20241022-v2:0"
-        self.fallback_model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+        self.primary_model_id = Config.BEDROCK_MODEL_ID or "amazon.nova-2-lite-v1:0"
+        self.fallback_model_id = "amazon.nova-lite-v1:0"
         self.region = Config.AWS_REGION
         self.client = None
         self.use_mock = False
@@ -71,7 +71,7 @@ class BedrockClient:
 
     def analyze_service_request(self, request_data: dict, attachments: list = None, customer_data: dict = None, asset_data: dict = None) -> dict:
         """
-        Executes Bedrock multimodal analysis for a Service Request.
+        Executes Bedrock multimodal analysis for a Service Request using Amazon Nova 2 Lite.
         Returns validated structured AI decision support metadata.
         """
         start_time = time.time()
@@ -104,7 +104,7 @@ Description:
 {cust_info}
 {asset_info}
 """
-        user_content_blocks.append({"type": "text", "text": text_prompt})
+        user_content_blocks.append({"text": text_prompt})
 
         # 2. Attachments Processing (Multimodal Images & Documents)
         if attachments and isinstance(attachments, list):
@@ -117,35 +117,34 @@ Description:
 
                 if not att_bytes:
                     user_content_blocks.append({
-                        "type": "text",
                         "text": f"\nAttachment listed: {file_name} (Type: {content_type}). Content could not be retrieved directly."
                     })
                     continue
 
-                # Multimodal Image Analysis
+                # Multimodal Image Analysis for Nova 2 Lite
                 if any(img_t in content_type for img_t in ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic"]) or file_name.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".heic")):
-                    media_type = content_type
-                    if media_type in ["image/jpg", "image/heic"] or not media_type.startswith("image/"):
-                        media_type = "image/jpeg"
+                    img_format = "jpeg"
+                    if "png" in content_type or file_name.lower().endswith(".png"):
+                        img_format = "png"
+                    elif "webp" in content_type or file_name.lower().endswith(".webp"):
+                        img_format = "webp"
 
                     try:
                         b64_data = base64.b64encode(att_bytes).decode("utf-8")
                         user_content_blocks.append({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": b64_data
+                            "image": {
+                                "format": img_format,
+                                "source": {
+                                    "bytes": b64_data
+                                }
                             }
                         })
                         user_content_blocks.append({
-                            "type": "text",
                             "text": f"Uploaded Image Attachment: {file_name} — Analyze for equipment model, serial number OCR, visual wear, error displays, or damage."
                         })
                     except Exception as img_err:
                         logger.warning(f"Failed to encode image attachment '{file_name}': {img_err}")
                         user_content_blocks.append({
-                            "type": "text",
                             "text": f"Attachment Image: {file_name} (Encoding error)."
                         })
 
@@ -154,7 +153,6 @@ Description:
                     try:
                         text_snippet = att_bytes.decode("utf-8", errors="ignore")[:4000]
                         user_content_blocks.append({
-                            "type": "text",
                             "text": f"\n--- Attached Document Text: {file_name} ---\n{text_snippet}\n--- End Document ---"
                         })
                     except Exception as txt_err:
@@ -165,12 +163,10 @@ Description:
                         pdf_text = self._extract_pdf_text_if_possible(att_bytes)
                         if pdf_text:
                             user_content_blocks.append({
-                                "type": "text",
                                 "text": f"\n--- Attached PDF Document ({file_name}) Extracted Content ---\n{pdf_text[:4000]}\n--- End PDF ---"
                             })
                         else:
                             user_content_blocks.append({
-                                "type": "text",
                                 "text": f"Attached PDF Document: {file_name}."
                             })
                     except Exception as pdf_err:
@@ -181,17 +177,17 @@ Description:
             logger.info("Bedrock Runtime client not configured in local environment. Synthesizing mock structured AI output.")
             return self._generate_fallback_synthesis(request_data, attachments, time.time() - start_time)
 
-        # Attempt Bedrock invocation with primary model
+        # Attempt Bedrock invocation with primary Nova 2 Lite model
         model_to_use = self.primary_model_id
         try:
-            ai_dict, latency = self._invoke_claude(model_to_use, user_content_blocks)
+            ai_dict, latency = self._invoke_nova(model_to_use, user_content_blocks)
             ai_dict["executionLatencyMs"] = int(latency * 1000)
             ai_dict["bedrockModelId"] = model_to_use
             return ai_dict
         except Exception as primary_err:
             logger.warning(f"Primary Bedrock model '{model_to_use}' failed: {primary_err}. Attempting fallback model '{self.fallback_model_id}'.")
             try:
-                ai_dict, latency = self._invoke_claude(self.fallback_model_id, user_content_blocks)
+                ai_dict, latency = self._invoke_nova(self.fallback_model_id, user_content_blocks)
                 ai_dict["executionLatencyMs"] = int(latency * 1000)
                 ai_dict["bedrockModelId"] = self.fallback_model_id
                 return ai_dict
@@ -205,23 +201,27 @@ Description:
                     code="BEDROCK_SERVICE_ERROR"
                 )
 
-    def _invoke_claude(self, model_id: str, content_blocks: list) -> tuple:
+    def _invoke_nova(self, model_id: str, content_blocks: list) -> tuple:
         """
-        Invokes Claude model on Bedrock. Performs 1x controlled JSON format retry if output is invalid JSON.
+        Invokes Amazon Nova model on Bedrock. Performs 1x controlled JSON format retry if output is invalid JSON.
         """
         start = time.time()
         payload = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 2500,
-            "temperature": 0.1,
-            "top_p": 0.9,
-            "system": SYSTEM_PROMPT,
+            "schemaVersion": "messages-v1",
+            "system": [
+                {"text": SYSTEM_PROMPT}
+            ],
             "messages": [
                 {
                     "role": "user",
                     "content": content_blocks
                 }
-            ]
+            ],
+            "inferenceConfig": {
+                "maxTokens": 2500,
+                "temperature": 0.1,
+                "topP": 0.9
+            }
         }
 
         response = self.client.invoke_model(
@@ -233,8 +233,8 @@ Description:
 
         response_body = json.loads(response["body"].read().decode("utf-8"))
         raw_text = ""
-        for block in response_body.get("content", []):
-            if block.get("type") == "text":
+        for block in response_body.get("output", {}).get("message", {}).get("content", []):
+            if "text" in block:
                 raw_text += block.get("text", "")
 
         try:
@@ -244,13 +244,12 @@ Description:
         except Exception as first_parse_err:
             logger.warning(f"Bedrock model '{model_id}' output was invalid JSON ({first_parse_err}). Executing 1x controlled JSON format retry.")
             
-            # Controlled 1x JSON format retry
+            # Controlled 1x JSON format retry for Nova
             retry_payload = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 2500,
-                "temperature": 0.1,
-                "top_p": 0.9,
-                "system": SYSTEM_PROMPT,
+                "schemaVersion": "messages-v1",
+                "system": [
+                    {"text": SYSTEM_PROMPT}
+                ],
                 "messages": [
                     {
                         "role": "user",
@@ -258,18 +257,24 @@ Description:
                     },
                     {
                         "role": "assistant",
-                        "content": raw_text
+                        "content": [
+                            {"text": raw_text}
+                        ]
                     },
                     {
                         "role": "user",
                         "content": [
                             {
-                                "type": "text",
                                 "text": "Your previous output was not valid JSON. Please re-format the analysis output as strictly valid JSON matching the specified schema. Return ONLY valid JSON with no conversational text or markdown code fences."
                             }
                         ]
                     }
-                ]
+                ],
+                "inferenceConfig": {
+                    "maxTokens": 2500,
+                    "temperature": 0.1,
+                    "topP": 0.9
+                }
             }
 
             retry_response = self.client.invoke_model(
@@ -281,8 +286,8 @@ Description:
 
             retry_body = json.loads(retry_response["body"].read().decode("utf-8"))
             retry_text = ""
-            for block in retry_body.get("content", []):
-                if block.get("type") == "text":
+            for block in retry_body.get("output", {}).get("message", {}).get("content", []):
+                if "text" in block:
                     retry_text += block.get("text", "")
 
             ai_dict = self._clean_and_parse_json(retry_text)
