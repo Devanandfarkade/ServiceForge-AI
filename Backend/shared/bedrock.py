@@ -124,13 +124,19 @@ Description:
                 # Multimodal Image Analysis for Nova 2 Lite
                 if any(img_t in content_type for img_t in ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic"]) or file_name.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".heic")):
                     img_format = "jpeg"
-                    if "png" in content_type or file_name.lower().endswith(".png"):
+                    image_bytes_to_send = att_bytes
+
+                    if "heic" in content_type or file_name.lower().endswith(".heic"):
+                        from shared.image_utils import convert_heic_to_jpeg
+                        image_bytes_to_send = convert_heic_to_jpeg(att_bytes)
+                        img_format = "jpeg"
+                    elif "png" in content_type or file_name.lower().endswith(".png"):
                         img_format = "png"
                     elif "webp" in content_type or file_name.lower().endswith(".webp"):
                         img_format = "webp"
 
                     try:
-                        b64_data = base64.b64encode(att_bytes).decode("utf-8")
+                        b64_data = base64.b64encode(image_bytes_to_send).decode("utf-8")
                         user_content_blocks.append({
                             "image": {
                                 "format": img_format,

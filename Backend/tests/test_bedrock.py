@@ -127,6 +127,82 @@ def test_invoke_nova_multimodal_image_formats():
         bedrock_client.client = original_client
         bedrock_client.use_mock = original_use_mock
 
+def test_invoke_nova_heic_attachment_conversion():
+    import base64
+    from PIL import Image
+    import pillow_heif
+
+    # Generate a real small in-memory HEIC image for the fixture
+    pillow_heif.register_heif_opener()
+    sample_img = Image.new("RGB", (20, 20), color="green")
+    heic_buf = io.BytesIO()
+    pillow_heif.from_pillow(sample_img).save(heic_buf)
+    heic_bytes = heic_buf.getvalue()
+
+    mock_client = MagicMock()
+    mock_client.invoke_model.return_value = {
+        "body": io.BytesIO(json.dumps({
+            "output": {
+                "message": {
+                    "content": [
+                        {"text": json.dumps({"summary": "HEIC image converted to JPEG analysis", "detectedAssetCategory": "COMPRESSOR"})}
+                    ]
+                }
+            }
+        }).encode("utf-8"))
+    }
+
+    original_client = bedrock_client.client
+    original_use_mock = bedrock_client.use_mock
+    bedrock_client.client = mock_client
+    bedrock_client.use_mock = False
+
+    result = bedrock_client.analyze_service_request(
+        {"requestId": "req-heic-test", "description": "HEIC equipment photo"},
+        attachments=[{"fileName": "compressor_nameplate.heic", "contentType": "image/heic", "bytes": heic_bytes}]
+    )
+
+    assert mock_client.invoke_model.call_count == 1
+    payload = json.loads(mock_client.invoke_model.call_args[1]["body"])
+    img_blocks = [b for b in payload["messages"][0]["content"] if "image" in b]
+    assert len(img_blocks) == 1
+    assert img_blocks[0]["image"]["format"] == "jpeg"
+    
+    # Verify the actual bytes sent are valid JPEG bytes starting with \xFF \xD8
+    decoded_jpeg_bytes = base64.b64decode(img_blocks[0]["image"]["source"]["bytes"])
+    assert decoded_jpeg_bytes[:2] == b"\xff\xd8"
+
+    # Verify PIL opens the decoded bytes as JPEG
+    decoded_img = Image.open(io.BytesIO(decoded_jpeg_bytes))
+    assert decoded_img.format == "JPEG"
+
+    bedrock_client.client = original_client
+    bedrock_client.use_mock = original_use_mock
+
+def test_invoke_nova_heic_conversion_failure_handling():
+    mock_client = MagicMock()
+    corrupted_heic_bytes = b"CORRUPTED_HEIC_FILE_BYTES_12345"
+
+    original_client = bedrock_client.client
+    original_use_mock = bedrock_client.use_mock
+    bedrock_client.client = mock_client
+    bedrock_client.use_mock = False
+
+    with pytest.raises(ServiceForgeError) as exc_info:
+        bedrock_client.analyze_service_request(
+            {"requestId": "req-heic-fail", "description": "Corrupted HEIC photo"},
+            attachments=[{"fileName": "broken.heic", "contentType": "image/heic", "bytes": corrupted_heic_bytes}]
+        )
+
+    # Nova invocation must NOT be performed
+    assert mock_client.invoke_model.call_count == 0
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "IMAGE_CONVERSION_ERROR"
+
+    bedrock_client.client = original_client
+    bedrock_client.use_mock = original_use_mock
+
+
 def test_invoke_nova_controlled_json_retry():
     mock_client = MagicMock()
     
