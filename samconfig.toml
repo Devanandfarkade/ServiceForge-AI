@@ -7,7 +7,7 @@ s3_prefix = "serviceforge-ai"
 region = "ap-south-1"
 profile = "serviceforge-dev"
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
-parameter_overrides = "Environment=\"prod\" TableName=\"ServiceForge\" BedrockModelId=\"anthropic.claude-3-5-sonnet-20241022-v2:0\""
+parameter_overrides = "Environment=\"prod\" TableName=\"ServiceForge\" BedrockModelId=\"apac.anthropic.claude-3-5-sonnet-20241022-v2:0\""
 image_repositories = []
 
 [default.global.parameters]

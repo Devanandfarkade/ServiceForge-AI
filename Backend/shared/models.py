@@ -142,7 +142,7 @@ def build_job_update_item(org_id: str, job_id: str, technician_id: str, update_t
 def build_ai_analysis_item(org_id: str, request_id: str, ai_result: dict, model_id: str = None) -> dict:
     analysis_id = f"analysis-{str(uuid.uuid4())[:8]}"
     ts = now_iso()
-    m_id = model_id or "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    m_id = model_id or "apac.anthropic.claude-3-5-sonnet-20241022-v2:0"
 
     item = {
         "PK": f"ORG#{org_id}",

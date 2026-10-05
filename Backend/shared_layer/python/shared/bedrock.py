@@ -54,7 +54,7 @@ REQUIRED OUTPUT JSON SCHEMA:
 
 class BedrockClient:
     def __init__(self):
-        self.primary_model_id = Config.BEDROCK_MODEL_ID or "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        self.primary_model_id = Config.BEDROCK_MODEL_ID or "apac.anthropic.claude-3-5-sonnet-20241022-v2:0"
         self.fallback_model_id = "anthropic.claude-3-haiku-20240307-v1:0"
         self.region = Config.AWS_REGION
         self.client = None

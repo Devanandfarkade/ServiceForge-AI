@@ -70,7 +70,7 @@ def test_invoke_claude_controlled_json_retry():
     original_client = bedrock_client.client
     bedrock_client.client = mock_client
 
-    result, latency = bedrock_client._invoke_claude("anthropic.claude-3-5-sonnet-20241022-v2:0", [{"type": "text", "text": "Test prompt"}])
+    result, latency = bedrock_client._invoke_claude("apac.anthropic.claude-3-5-sonnet-20241022-v2:0", [{"type": "text", "text": "Test prompt"}])
 
     assert mock_client.invoke_model.call_count == 2
     assert result["detectedAssetCategory"] == "BOILER"
